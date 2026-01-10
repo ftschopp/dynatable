@@ -1,0 +1,28 @@
+{
+  "name": "crud",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:logs": "docker-compose logs -f dynamodb-local",
+    "setup:table": "ts-node src/setup-table.ts",
+    "dev": "ts-node src/index.ts",
+    "dev:aws": "AWS_PROFILE=thexplace ts-node src/index.ts",
+    "build": "tsc",
+    "start": "ts-node src/index.ts",
+    "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
+    "migrate": "dynatable-migrate",
+    "migrate:create": "dynatable-migrate create",
+    "migrate:up": "dynatable-migrate up",
+    "migrate:down": "dynatable-migrate down",
+    "migrate:status": "dynatable-migrate status"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.965.0",
+    "@ftschopp/dynatable-core": "*",
+    "@ftschopp/dynatable-migrations": "*",
+    "zod": "^4.3.5"
+  }
+}
