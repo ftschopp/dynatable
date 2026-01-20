@@ -59,8 +59,49 @@ export function createUpdateBuilder<Model>(
       );
     },
 
-    set(attr, value) {
-      const attrName = normalizeAttr(attr);
+    set(attrOrUpdates: keyof Model | AttrRef | Partial<Model>, value?: any) {
+      // Check if this is a multiple updates object
+      // An AttrRef has only 'name' property and is a string value
+      // Multiple updates is an object with no value parameter
+      if (
+        value === undefined &&
+        typeof attrOrUpdates === 'object' &&
+        attrOrUpdates !== null &&
+        !(
+          Object.keys(attrOrUpdates).length === 1 &&
+          'name' in attrOrUpdates &&
+          typeof (attrOrUpdates as any).name === 'string'
+        )
+      ) {
+        // Multiple updates case
+        const updates = attrOrUpdates as Partial<Model>;
+        const newActions: UpdateAction[] = [];
+
+        for (const [attr, val] of Object.entries(updates)) {
+          const attrName = attr;
+          const valueName = getUniqueValueName(attrName);
+          newActions.push({
+            expression: `#${attrName} = :${valueName}`,
+            names: { [`#${attrName}`]: attrName },
+            values: { [`:${valueName}`]: val },
+          });
+        }
+
+        return createUpdateBuilder(
+          tableName,
+          key,
+          client,
+          conditions,
+          { ...updateActions, set: [...updateActions.set, ...newActions] },
+          returnMode,
+          valueCounter,
+          enableTimestamps,
+          logger
+        );
+      }
+
+      // Single update case
+      const attrName = normalizeAttr(attrOrUpdates as keyof Model | AttrRef);
       const valueName = getUniqueValueName(attrName);
       const action: UpdateAction = {
         expression: `#${attrName} = :${valueName}`,
@@ -267,16 +308,13 @@ export function createUpdateBuilder<Model>(
       const response = await client.send(new UpdateCommand(params));
       logger?.log('UpdateCommand', params, response);
 
-      // Return the updated item based on returnMode
-      if (returnMode === 'ALL_NEW' && response.Attributes) {
-        return response.Attributes as Model;
-      }
-      if (returnMode === 'UPDATED_NEW' && response.Attributes) {
+      // Return the item based on returnMode
+      if (response.Attributes) {
         return response.Attributes as Model;
       }
 
-      // For other modes, return the key as a fallback
-      return key as Model;
+      // If no attributes returned (NONE mode), return undefined
+      return undefined as unknown as Model;
     },
   });
 

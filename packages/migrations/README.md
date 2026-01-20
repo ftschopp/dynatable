@@ -9,8 +9,8 @@ DynamoDB migration tool for single table design with schema versioning.
 - 🔄 **Up/Down Migrations** - Support for both applying and rolling back migrations
 - 📝 **Migration History** - All migration records stored in your DynamoDB table using Single Table Design
 - 🎯 **TypeScript First** - Full TypeScript support with type safety
-- 🛠️ **CLI Tool** - Easy-to-use command-line interface
-- 📦 **Zero Dependencies** - Only requires AWS SDK
+- 🛠️ **CLI Tool** - Easy-to-use command-line interface with beautiful UI (ora, chalk)
+- 📦 **Minimal Dependencies** - Only requires AWS SDK and CLI tools (commander, ora, chalk)
 
 ## Installation
 

@@ -1,7 +1,13 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
-import { TransactWriteBuilder, TransactWriteState } from './types';
+import {
+  TransactWriteBuilder,
+  TransactWriteState,
+  TransactPutParams,
+  TransactUpdateParams,
+  TransactDeleteParams,
+  TransactConditionCheckParams,
+} from './types';
 
 /**
  * Creates the initial state for a TransactWrite builder
@@ -16,7 +22,7 @@ const createInitialState = (client: DynamoDBClient): TransactWriteState => ({
  */
 const addPutItem =
   (state: TransactWriteState) =>
-  (params: any): TransactWriteState => ({
+  (params: TransactPutParams): TransactWriteState => ({
     ...state,
     items: [...state.items, { Put: params }],
   });
@@ -26,7 +32,7 @@ const addPutItem =
  */
 const addUpdateItem =
   (state: TransactWriteState) =>
-  (params: any): TransactWriteState => ({
+  (params: TransactUpdateParams): TransactWriteState => ({
     ...state,
     items: [...state.items, { Update: params }],
   });
@@ -36,7 +42,7 @@ const addUpdateItem =
  */
 const addDeleteItem =
   (state: TransactWriteState) =>
-  (params: any): TransactWriteState => ({
+  (params: TransactDeleteParams): TransactWriteState => ({
     ...state,
     items: [...state.items, { Delete: params }],
   });
@@ -46,7 +52,7 @@ const addDeleteItem =
  */
 const addConditionCheckItem =
   (state: TransactWriteState) =>
-  (params: any): TransactWriteState => ({
+  (params: TransactConditionCheckParams): TransactWriteState => ({
     ...state,
     items: [...state.items, { ConditionCheck: params }],
   });
@@ -64,9 +70,9 @@ const setClientRequestToken =
 /**
  * Converts the builder state to DynamoDB parameters
  */
-const toDbParams = (state: TransactWriteState) => {
-  const params: any = {
-    TransactItems: state.items,
+const toDbParams = (state: TransactWriteState): ReturnType<TransactWriteBuilder['dbParams']> => {
+  const params: ReturnType<TransactWriteBuilder['dbParams']> = {
+    TransactItems: [...state.items],
   };
 
   if (state.clientRequestToken) {
@@ -89,11 +95,11 @@ const execute = async (state: TransactWriteState) => {
  * Creates a builder from the current state
  */
 const createBuilder = (state: TransactWriteState): TransactWriteBuilder => ({
-  addPut: (params: any) => createBuilder(addPutItem(state)(params)),
-  addUpdate: (params: any) => createBuilder(addUpdateItem(state)(params)),
-  addDelete: (params: any) => createBuilder(addDeleteItem(state)(params)),
-  addConditionCheck: (params: any) => createBuilder(addConditionCheckItem(state)(params)),
-  withClientRequestToken: (token: string) => createBuilder(setClientRequestToken(state)(token)),
+  addPut: (params) => createBuilder(addPutItem(state)(params)),
+  addUpdate: (params) => createBuilder(addUpdateItem(state)(params)),
+  addDelete: (params) => createBuilder(addDeleteItem(state)(params)),
+  addConditionCheck: (params) => createBuilder(addConditionCheckItem(state)(params)),
+  withClientRequestToken: (token) => createBuilder(setClientRequestToken(state)(token)),
   dbParams: () => toDbParams(state),
   execute: () => execute(state),
 });

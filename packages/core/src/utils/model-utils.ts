@@ -99,3 +99,35 @@ export const applyPostDefaults = <M extends ModelDefinition>(
 
   return result as InferModel<M>;
 };
+
+/**
+ * Internal DynamoDB keys that should be stripped when cleanInternalKeys is enabled
+ */
+const INTERNAL_KEYS = ['PK', 'SK', '_type'] as const;
+
+/**
+ * Removes internal DynamoDB keys from an item or array of items
+ * @param data - Single item or array of items from DynamoDB
+ * @returns Data with internal keys removed
+ */
+export const stripInternalKeys = <T>(data: T | T[] | undefined): T | T[] | undefined => {
+  if (data === undefined || data === null) {
+    return data;
+  }
+
+  if (Array.isArray(data)) {
+    return data.map((item) => stripInternalKeys(item)) as T[];
+  }
+
+  if (typeof data === 'object') {
+    const cleaned: any = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (!INTERNAL_KEYS.includes(key as any)) {
+        cleaned[key] = value;
+      }
+    }
+    return cleaned as T;
+  }
+
+  return data;
+};

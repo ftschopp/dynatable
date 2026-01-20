@@ -1,3 +1,4 @@
+import type { UpdateCommandInput } from '@aws-sdk/lib-dynamodb';
 import { OperationBuilder, AttrRef } from '../shared';
 
 /**
@@ -12,11 +13,12 @@ export type UpdateAction = {
 /**
  * Builder interface for DynamoDB UpdateItem operations
  */
-export interface UpdateBuilder<Model> extends OperationBuilder<Model> {
+export interface UpdateBuilder<Model> extends Omit<OperationBuilder<Model>, 'dbParams'> {
   /**
-   * Sets an attribute to a specific value
+   * Sets an attribute to a specific value, or sets multiple attributes at once
    */
   set(attr: keyof Model | AttrRef, value: any): UpdateBuilder<Model>;
+  set(updates: Partial<Model>): UpdateBuilder<Model>;
 
   /**
    * Removes an attribute from the item
@@ -39,4 +41,9 @@ export interface UpdateBuilder<Model> extends OperationBuilder<Model> {
   returning(
     mode: 'NONE' | 'ALL_OLD' | 'ALL_NEW' | 'UPDATED_OLD' | 'UPDATED_NEW'
   ): UpdateBuilder<Model>;
+
+  /**
+   * Converts the builder state to DynamoDB UpdateItem parameters
+   */
+  dbParams(): UpdateCommandInput;
 }

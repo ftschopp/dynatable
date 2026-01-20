@@ -5,9 +5,10 @@ TransactWrite provides atomic multi-item write operations in DynamoDB. All opera
 ## Features
 
 - **Functional API**: Immutable builders using pure functions
-- **Type-safe**: Full TypeScript support
+- **Type-safe**: Full TypeScript support with AWS SDK types
 - **Composable**: Chain operations fluently
 - **Idempotent**: Support for client request tokens
+- **Flexible**: Accepts both entity builder outputs and raw DynamoDB parameters
 
 ## Usage
 
@@ -142,6 +143,41 @@ Use client request tokens for idempotent operations:
 
 ```typescript
 await table.transactWrite().addPut(params).withClientRequestToken('unique-id-12345').execute();
+```
+
+## Type Safety
+
+All operations are fully typed using AWS SDK types:
+
+```typescript
+import type {
+  TransactPutParams,
+  TransactUpdateParams,
+  TransactDeleteParams,
+  TransactConditionCheckParams,
+} from '@ftschopp/dynatable-core';
+
+// addPut accepts PutCommandInput from @aws-sdk/lib-dynamodb
+const putParams: TransactPutParams = {
+  TableName: 'MyTable',
+  Item: { pk: 'USER#123', sk: 'USER#123', name: 'John' },
+};
+
+// TypeScript validates all parameters at compile time
+table.transactWrite().addPut(putParams).execute();
+```
+
+### Using Entity Builders
+
+Entity builders automatically provide correctly typed parameters via `.dbParams()`:
+
+```typescript
+// The entity builder's dbParams() returns PutCommandInput
+const params = table.entities.User.put({ username: 'john' }).ifNotExists().dbParams();
+// params is typed as PutCommandInput
+
+// Pass it to the transaction builder
+table.transactWrite().addPut(params).execute();
 ```
 
 ## Functional Design

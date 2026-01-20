@@ -52,6 +52,49 @@ describe('UpdateBuilder', () => {
         ':score_2': 100,
       });
     });
+
+    test('should build params with multiple SET operations using object', () => {
+      const key: Partial<TestModel> = { pk: 'USER#1', sk: 'USER#1' };
+      const params = createUpdateBuilder<TestModel>(tableName, key, client)
+        .set({
+          name: 'John Doe',
+          age: 30,
+          score: 100,
+        })
+        .dbParams();
+
+      expect(params.UpdateExpression).toBe('SET #name = :name_0, #age = :age_1, #score = :score_2');
+      expect(params.ExpressionAttributeNames).toEqual({
+        '#name': 'name',
+        '#age': 'age',
+        '#score': 'score',
+      });
+      expect(params.ExpressionAttributeValues).toEqual({
+        ':name_0': 'John Doe',
+        ':age_1': 30,
+        ':score_2': 100,
+      });
+    });
+
+    test('should combine single and multiple SET operations', () => {
+      const key: Partial<TestModel> = { pk: 'USER#1', sk: 'USER#1' };
+      const params = createUpdateBuilder<TestModel>(tableName, key, client)
+        .set('name', 'John Doe')
+        .set({ age: 30, score: 100 })
+        .dbParams();
+
+      expect(params.UpdateExpression).toBe('SET #name = :name_0, #age = :age_1, #score = :score_2');
+      expect(params.ExpressionAttributeNames).toEqual({
+        '#name': 'name',
+        '#age': 'age',
+        '#score': 'score',
+      });
+      expect(params.ExpressionAttributeValues).toEqual({
+        ':name_0': 'John Doe',
+        ':age_1': 30,
+        ':score_2': 100,
+      });
+    });
   });
 
   describe('REMOVE operations', () => {

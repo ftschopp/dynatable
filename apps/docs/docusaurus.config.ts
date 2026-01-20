@@ -88,7 +88,7 @@ const config: Config = {
           label: 'Docs',
         },
         {
-          href: 'https://github.com/choppsources/dynatable',
+          href: 'https://github.com/ftschopp/dynatable',
           label: 'GitHub',
           position: 'right',
         },
@@ -123,15 +123,15 @@ const config: Config = {
           items: [
             {
               label: 'GitHub',
-              href: 'https://github.com/choppsources/dynatable',
+              href: 'https://github.com/ftschopp/dynatable',
             },
             {
               label: 'Issues',
-              href: 'https://github.com/choppsources/dynatable/issues',
+              href: 'https://github.com/ftschopp/dynatable/issues',
             },
             {
               label: 'Discussions',
-              href: 'https://github.com/choppsources/dynatable/discussions',
+              href: 'https://github.com/ftschopp/dynatable/discussions',
             },
           ],
         },

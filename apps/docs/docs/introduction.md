@@ -139,9 +139,9 @@ Ready to get started? Here's your learning path:
 
 ## Community & Support
 
-- **GitHub**: [github.com/choppsources/dynatable](https://github.com/choppsources/dynatable)
-- **Issues**: [Report bugs or request features](https://github.com/choppsources/dynatable/issues)
-- **Discussions**: [Ask questions and share ideas](https://github.com/choppsources/dynatable/discussions)
+- **GitHub**: [github.com/ftschopp/dynatable](https://github.com/ftschopp/dynatable)
+- **Issues**: [Report bugs or request features](https://github.com/ftschopp/dynatable/issues)
+- **Discussions**: [Ask questions and share ideas](https://github.com/ftschopp/dynatable/discussions)
 
 ## License
 

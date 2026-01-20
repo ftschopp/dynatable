@@ -209,7 +209,33 @@ The `op` parameter in `.where()` provides these operators:
 - `op.gt(attr, value)` - Greater than (>)
 - `op.gte(attr, value)` - Greater than or equal (>=)
 - `op.between(attr, low, high)` - Between two values
-- `op.beginsWith(attr, prefix)` - Begins with a string (for string fields)
+
+**String Operators:**
+
+- `op.beginsWith(attr, prefix)` - Begins with a string prefix (for string/binary fields)
+- `op.contains(attr, value)` - Contains a substring or value (works with strings, sets, and lists)
+
+**Existence Operators:**
+
+- `op.exists(attr)` - Attribute exists
+- `op.notExists(attr)` - Attribute does not exist
+
+**Type Checking:**
+
+- `op.attributeType(attr, type)` - Check the attribute's type
+  - Valid types: `'S'` (String), `'N'` (Number), `'B'` (Binary), `'SS'` (String Set), `'NS'` (Number Set), `'BS'` (Binary Set), `'M'` (Map), `'L'` (List), `'NULL'`, `'BOOL'`
+
+**Advanced Operators:**
+
+- `op.in(attr, values[])` - Attribute value is in the provided array
+- `op.size(attr)` - Get the size of an attribute (string length, number of elements in set/list, etc.)
+  - Returns a `SizeRef` object with comparison methods:
+    - `.eq(n)` - Size equals n
+    - `.ne(n)` - Size not equals n
+    - `.lt(n)` - Size less than n
+    - `.lte(n)` - Size less than or equal to n
+    - `.gt(n)` - Size greater than n
+    - `.gte(n)` - Size greater than or equal to n
 
 **Logical Operators:**
 
@@ -256,6 +282,47 @@ The `op` parameter in `.where()` provides these operators:
 
 // NOT operator
 .where((attr, op) => op.not(op.eq(attr.status, 'deleted')))
+
+// Existence operators
+.where((attr, op) => op.and(
+  op.eq(attr.username, 'alice'),
+  op.exists(attr.email)              // Has email field
+))
+
+.where((attr, op) => op.notExists(attr.deletedAt))  // Not deleted
+
+// Contains operator (for strings, sets, lists)
+.where((attr, op) => op.and(
+  op.eq(attr.username, 'alice'),
+  op.contains(attr.bio, 'developer')  // Bio contains "developer"
+))
+
+.where((attr, op) => op.contains(attr.tags, 'premium'))  // Has "premium" in tags set/list
+
+// IN operator
+.where((attr, op) => op.in(attr.status, ['active', 'pending', 'verified']))
+
+// Size operator
+.where((attr, op) => op.size(attr.tags).gte(3))        // At least 3 tags
+.where((attr, op) => op.size(attr.username).lt(20))    // Username shorter than 20 chars
+.where((attr, op) => op.size(attr.comments).eq(0))     // No comments
+
+// Attribute type checking
+.where((attr, op) => op.attributeType(attr.metadata, 'M'))  // Is a Map
+.where((attr, op) => op.attributeType(attr.items, 'L'))     // Is a List
+
+// Complex example with new operators
+await table.entities.User.query()
+  .where((attr, op) => op.and(
+    op.eq(attr.status, 'active'),
+    op.exists(attr.email),
+    op.size(attr.followers).gte(10),
+    op.or(
+      op.contains(attr.tags, 'premium'),
+      op.contains(attr.tags, 'verified')
+    )
+  ))
+  .execute();
 
 // Complete example with all features
 await table.entities.Photo.query()

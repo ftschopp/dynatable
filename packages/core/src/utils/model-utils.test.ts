@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { applyPostDefaults } from './model-utils';
+import { applyPostDefaults, stripInternalKeys } from './model-utils';
 import { ModelDefinition } from '../core/types';
 
 describe('applyPostDefaults - Timestamps', () => {
@@ -227,6 +227,136 @@ describe('applyPostDefaults - Timestamps', () => {
 
       expect(result2.createdAt).toEqual('2024-01-15T11:00:00.000Z');
       expect(result2.updatedAt).toEqual('2024-01-15T11:00:00.000Z');
+    });
+  });
+});
+
+describe('stripInternalKeys', () => {
+  test('should remove PK, SK, and _type from object', () => {
+    const input = {
+      PK: 'USER#alice',
+      SK: 'USER#alice',
+      _type: 'User',
+      username: 'alice',
+      name: 'Alice',
+      email: 'alice@example.com',
+    };
+
+    const result = stripInternalKeys(input);
+
+    expect(result).toEqual({
+      username: 'alice',
+      name: 'Alice',
+      email: 'alice@example.com',
+    });
+  });
+
+  test('should handle object without internal keys', () => {
+    const input = {
+      username: 'alice',
+      name: 'Alice',
+      email: 'alice@example.com',
+    };
+
+    const result = stripInternalKeys(input);
+
+    expect(result).toEqual(input);
+  });
+
+  test('should handle array of objects', () => {
+    const input = [
+      {
+        PK: 'USER#alice',
+        SK: 'USER#alice',
+        _type: 'User',
+        username: 'alice',
+        name: 'Alice',
+      },
+      {
+        PK: 'USER#bob',
+        SK: 'USER#bob',
+        _type: 'User',
+        username: 'bob',
+        name: 'Bob',
+      },
+    ];
+
+    const result = stripInternalKeys(input);
+
+    expect(result).toEqual([
+      { username: 'alice', name: 'Alice' },
+      { username: 'bob', name: 'Bob' },
+    ]);
+  });
+
+  test('should handle undefined', () => {
+    const result = stripInternalKeys(undefined);
+    expect(result).toBeUndefined();
+  });
+
+  test('should handle null', () => {
+    const result = stripInternalKeys(null);
+    expect(result).toBeNull();
+  });
+
+  test('should handle empty object', () => {
+    const input = {};
+    const result = stripInternalKeys(input);
+    expect(result).toEqual({});
+  });
+
+  test('should handle empty array', () => {
+    const input: any[] = [];
+    const result = stripInternalKeys(input);
+    expect(result).toEqual([]);
+  });
+
+  test('should preserve other fields with similar names', () => {
+    const input = {
+      PK: 'USER#alice',
+      SK: 'USER#alice',
+      _type: 'User',
+      PKG: 'package-name',
+      SKIP: 'skip-value',
+      type: 'customer',
+      username: 'alice',
+    };
+
+    const result = stripInternalKeys(input);
+
+    expect(result).toEqual({
+      PKG: 'package-name',
+      SKIP: 'skip-value',
+      type: 'customer',
+      username: 'alice',
+    });
+  });
+
+  test('should handle nested objects (does not recurse)', () => {
+    const input = {
+      PK: 'USER#alice',
+      SK: 'USER#alice',
+      _type: 'User',
+      username: 'alice',
+      metadata: {
+        PK: 'METADATA#1',
+        SK: 'METADATA#1',
+        _type: 'Metadata',
+        value: 'test',
+      },
+    };
+
+    const result = stripInternalKeys(input);
+
+    // stripInternalKeys does not recurse into nested objects
+    expect(result).toEqual({
+      username: 'alice',
+      metadata: {
+        PK: 'METADATA#1',
+        SK: 'METADATA#1',
+        _type: 'Metadata',
+        value: 'test',
+      },
     });
   });
 });

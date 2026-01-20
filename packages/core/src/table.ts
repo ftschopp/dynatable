@@ -65,6 +65,7 @@ export class Table<S extends SchemaDefinition> {
       rawEntities[modelName] = createEntityAPI(tableName, modelName, model, client, {
         logger,
         timestamps: schema.params?.timestamps ?? false,
+        cleanInternalKeys: schema.params?.cleanInternalKeys ?? false,
       });
     }
 
