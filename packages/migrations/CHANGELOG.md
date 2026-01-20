@@ -1,3 +1,10 @@
+# @ftschopp/dynatable-migrations [1.1.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.0.0...@ftschopp/dynatable-migrations@1.1.0) (2026-01-20)
+
+
+### Features
+
+* improve types ([3a87c5c](https://github.com/ftschopp/dynatable/commit/3a87c5c37565f92d8c4a4790396eefa57cd9a5c5))
+
 # @ftschopp/dynatable-migrations 1.0.0 (2026-01-10)
 
 
