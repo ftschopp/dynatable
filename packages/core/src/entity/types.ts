@@ -9,7 +9,6 @@ import {
   BatchGetBuilder,
   BatchWriteBuilder,
 } from '@/builders';
-import { ModelDefinition } from '@/core/types';
 
 /**
  * Options for creating the Entity API
@@ -23,7 +22,7 @@ export type EntityAPIOptions = {
 /**
  * Entity API interface for a model
  */
-export type EntityAPI<Model, Input, KeyInput, ModelDef extends ModelDefinition = any> = {
+export type EntityAPI<Model, Input, KeyInput> = {
   /**
    * Retrieves an item by its key.
    * @param key - Partial or full key object to identify the item
@@ -42,7 +41,7 @@ export type EntityAPI<Model, Input, KeyInput, ModelDef extends ModelDefinition =
    * Queries items using key conditions.
    * @returns QueryBuilder for building and executing the query
    */
-  query: () => QueryBuilder<Model, ModelDef>;
+  query: () => QueryBuilder<Model>;
 
   /**
    * Scans the entire table or index without key conditions.

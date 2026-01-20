@@ -35,7 +35,7 @@ export const createEntityAPI = <Model extends ModelDefinition>(
   model: Model,
   client: DynamoDBClient,
   options: EntityAPIOptions = {}
-): EntityAPI<InferModel<Model>, InferInput<Model>, InferKeyInput<Model>, Model> => {
+): EntityAPI<InferModel<Model>, InferInput<Model>, InferKeyInput<Model>> => {
   const { logger, timestamps = false, cleanInternalKeys = false } = options;
 
   // Build a Zod schema from the model
@@ -86,7 +86,7 @@ export const createEntityAPI = <Model extends ModelDefinition>(
     query() {
       // Query builder doesn't have execute() until after .where() is called
       // The cleanInternalKeys will be handled in the builder itself
-      return createQueryBuilder<InferModel<Model>, Model>(tableName, client, model, logger);
+      return createQueryBuilder<InferModel<Model>>(tableName, client, model, logger);
     },
 
     scan() {

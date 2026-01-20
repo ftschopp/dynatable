@@ -1,6 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { ExecutableBuilder, AttrBuilder, OpBuilder, Condition } from '../shared';
-import { ModelDefinition } from '../../core/types';
 
 /**
  * Query result with pagination support
@@ -30,38 +29,36 @@ export interface QueryResult<Model> {
 /**
  * Query executor with additional query-specific options
  */
-export interface QueryExecutor<Model, M extends ModelDefinition = any> extends ExecutableBuilder<
-  Model[]
-> {
+export interface QueryExecutor<Model> extends ExecutableBuilder<Model[]> {
   /**
    * Limit the number of items to return
    */
-  limit(count: number): QueryExecutor<Model, M>;
+  limit(count: number): QueryExecutor<Model>;
 
   /**
    * Scan index forward (ascending) or backward (descending)
    */
-  scanIndexForward(forward: boolean): QueryExecutor<Model, M>;
+  scanIndexForward(forward: boolean): QueryExecutor<Model>;
 
   /**
    * Use a secondary index
    */
-  useIndex(indexName: string): QueryExecutor<Model, M>;
+  useIndex(indexName: string): QueryExecutor<Model>;
 
   /**
    * Select specific attributes to return
    */
-  select(attrs: (keyof Model)[]): QueryExecutor<Model, M>;
+  select(attrs: (keyof Model)[]): QueryExecutor<Model>;
 
   /**
    * Use consistent read
    */
-  consistentRead(): QueryExecutor<Model, M>;
+  consistentRead(): QueryExecutor<Model>;
 
   /**
    * Start query from a specific key (for pagination)
    */
-  startFrom(key: Record<string, any>): QueryExecutor<Model, M>;
+  startFrom(key: Record<string, any>): QueryExecutor<Model>;
 
   /**
    * Returns the raw DynamoDB query parameters
@@ -82,7 +79,7 @@ export interface QueryExecutor<Model, M extends ModelDefinition = any> extends E
 /**
  * Main Query Builder interface with type-safe where clause
  */
-export interface QueryBuilder<Model, M extends ModelDefinition = any> {
+export interface QueryBuilder<Model> {
   /**
    * Build a condition expression using attributes and operators
    * Usage: .where((attr, op) => op.eq(attr.username, 'juanca'))
@@ -91,5 +88,5 @@ export interface QueryBuilder<Model, M extends ModelDefinition = any> {
    *   op.gt(attr.age, 18)
    * ))
    */
-  where(fn: (attr: AttrBuilder<Model>, op: OpBuilder) => Condition): QueryExecutor<Model, M>;
+  where(fn: (attr: AttrBuilder<Model>, op: OpBuilder) => Condition): QueryExecutor<Model>;
 }

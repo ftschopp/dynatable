@@ -181,9 +181,7 @@ function buildSimpleAndExpression(conditions: Condition[]): {
 /**
  * Creates the query executor with all query methods
  */
-function createQueryExecutor<Model, M extends ModelDefinition = any>(
-  state: QueryState<Model>
-): QueryExecutor<Model, M> {
+function createQueryExecutor<Model>(state: QueryState<Model>): QueryExecutor<Model> {
   return {
     limit(count) {
       return createQueryExecutor({
@@ -317,12 +315,12 @@ function createQueryExecutor<Model, M extends ModelDefinition = any>(
 /**
  * Creates a QueryBuilder for a table
  */
-export function createQueryBuilder<Model, M extends ModelDefinition = any>(
+export function createQueryBuilder<Model>(
   tableName: string,
   client: DynamoDBClient,
-  model?: M,
+  model?: ModelDefinition,
   logger?: DynamoDBLogger
-): QueryBuilder<Model, M> {
+): QueryBuilder<Model> {
   return {
     where(fn) {
       // Create attribute builder proxy

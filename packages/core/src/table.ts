@@ -26,13 +26,19 @@ export type TableConfig<S extends SchemaDefinition> = {
 };
 
 /**
+ * Helper type to force TypeScript to expand/simplify a type.
+ * This helps with type inference in callbacks by making the type "concrete".
+ */
+type Simplify<T> = { [K in keyof T]: T[K] } & {};
+
+/**
  * Internal helper type to infer all entity APIs from schema definition
  */
 type EntityMap<S extends SchemaDefinition> = {
   [K in keyof S['models']]: EntityAPI<
-    InferModelFromSchema<S, K>,
-    InferInputFromSchema<S, K>,
-    InferKeyInput<S['models'][K]>
+    Simplify<InferModelFromSchema<S, K>>,
+    Simplify<InferInputFromSchema<S, K>>,
+    Simplify<InferKeyInput<S['models'][K]>>
   >;
 };
 
