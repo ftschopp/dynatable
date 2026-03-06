@@ -21,3 +21,7 @@
   align-items: center;
   justify-content: center;
 }
+
+.codeExample {
+  padding: 4rem 0;
+}

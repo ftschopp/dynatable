@@ -1,7 +1,24 @@
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import {
+  ScanCommand,
+  QueryCommand,
+  GetCommand,
+  PutCommand,
+  UpdateCommand,
+  DeleteCommand,
+  BatchGetCommand,
+  BatchWriteCommand,
+  TransactWriteCommand,
+  TransactGetCommand,
+} from '@aws-sdk/lib-dynamodb';
 import { MigrationConfig, MigrationContext, MigrationFile, MigrationStatus } from '../types';
 import { DynamoDBMigrationTracker } from './tracker';
 import { MigrationLoader } from './loader';
+
+export interface RunOptions {
+  limit?: number;
+  dryRun?: boolean;
+}
 
 export class MigrationRunner {
   private client: DynamoDBDocumentClient;
@@ -26,105 +43,175 @@ export class MigrationRunner {
   /**
    * Run all pending migrations
    */
-  async up(limit?: number): Promise<MigrationFile[]> {
+  async up(options: RunOptions = {}): Promise<MigrationFile[]> {
+    const { limit, dryRun = false } = options;
+
     await this.initialize();
 
-    const appliedMigrations = await this.tracker.getAppliedMigrations();
-    const appliedVersions = appliedMigrations
-      .filter((m) => m.status === 'applied')
-      .map((m) => m.version);
-
-    let pendingMigrations = await this.loader.getPendingMigrations(appliedVersions);
-
-    // Apply limit if specified
-    if (limit) {
-      pendingMigrations = pendingMigrations.slice(0, limit);
-    }
-
-    if (pendingMigrations.length === 0) {
-      console.log('✅ No pending migrations');
-      return [];
-    }
-
-    console.log(`\n📦 Found ${pendingMigrations.length} pending migration(s)\n`);
-
-    const executed: MigrationFile[] = [];
-
-    for (const migrationFile of pendingMigrations) {
-      try {
-        console.log(`⬆️  Applying ${migrationFile.version}: ${migrationFile.name}`);
-
-        const context = this.createContext();
-        await migrationFile.migration.up(context);
-
-        await this.tracker.markAsApplied(
-          migrationFile.version,
-          migrationFile.name,
-          migrationFile.migration.schema
+    // Acquire lock unless dry run
+    if (!dryRun) {
+      const lockAcquired = await this.tracker.acquireLock();
+      if (!lockAcquired) {
+        throw new Error(
+          'Could not acquire migration lock. Another migration may be in progress. ' +
+            'If you believe this is an error, wait a few minutes and try again.'
         );
-
-        console.log(`✅ Applied ${migrationFile.version}: ${migrationFile.name}\n`);
-        executed.push(migrationFile);
-      } catch (error: any) {
-        console.error(`❌ Failed to apply ${migrationFile.version}: ${error.message}\n`);
-
-        await this.tracker.markAsFailed(migrationFile.version, error.message);
-
-        throw new Error(`Migration ${migrationFile.version} failed: ${error.message}`);
       }
     }
 
-    return executed;
+    try {
+      const appliedMigrations = await this.tracker.getAppliedMigrations();
+      const appliedVersions = appliedMigrations
+        .filter((m) => m.status === 'applied')
+        .map((m) => m.version);
+
+      // Check for checksum mismatches on applied migrations
+      for (const applied of appliedMigrations.filter((m) => m.status === 'applied')) {
+        const file = await this.loader.getMigration(applied.version);
+        if (file && applied.checksum && file.checksum !== applied.checksum) {
+          console.warn(
+            `⚠️  Warning: Migration ${applied.version} has been modified since it was applied. ` +
+              `Original checksum: ${applied.checksum}, Current: ${file.checksum}`
+          );
+        }
+      }
+
+      let pendingMigrations = await this.loader.getPendingMigrations(appliedVersions);
+
+      // Apply limit if specified
+      if (limit) {
+        pendingMigrations = pendingMigrations.slice(0, limit);
+      }
+
+      if (pendingMigrations.length === 0) {
+        console.log('✅ No pending migrations');
+        return [];
+      }
+
+      if (dryRun) {
+        console.log(`\n🔍 DRY RUN - Would apply ${pendingMigrations.length} migration(s):\n`);
+        for (const migrationFile of pendingMigrations) {
+          console.log(`   ${migrationFile.version}: ${migrationFile.name}`);
+          if (migrationFile.migration.description) {
+            console.log(`      ${migrationFile.migration.description}`);
+          }
+        }
+        console.log('\nNo changes were made.\n');
+        return pendingMigrations;
+      }
+
+      console.log(`\n📦 Found ${pendingMigrations.length} pending migration(s)\n`);
+
+      const executed: MigrationFile[] = [];
+
+      for (const migrationFile of pendingMigrations) {
+        try {
+          console.log(`⬆️  Applying ${migrationFile.version}: ${migrationFile.name}`);
+
+          const context = this.createContext();
+          await migrationFile.migration.up(context);
+
+          await this.tracker.markAsApplied(
+            migrationFile.version,
+            migrationFile.name,
+            migrationFile.migration.schema,
+            undefined,
+            migrationFile.checksum
+          );
+
+          console.log(`✅ Applied ${migrationFile.version}: ${migrationFile.name}\n`);
+          executed.push(migrationFile);
+        } catch (error: any) {
+          console.error(`❌ Failed to apply ${migrationFile.version}: ${error.message}\n`);
+
+          await this.tracker.markAsFailed(migrationFile.version, error.message);
+
+          throw new Error(`Migration ${migrationFile.version} failed: ${error.message}`);
+        }
+      }
+
+      return executed;
+    } finally {
+      // Always release lock
+      if (!dryRun) {
+        await this.tracker.releaseLock();
+      }
+    }
   }
 
   /**
    * Rollback last migration
    */
-  async down(steps: number = 1): Promise<MigrationFile[]> {
+  async down(steps: number = 1, dryRun: boolean = false): Promise<MigrationFile[]> {
     await this.initialize();
 
-    const appliedMigrations = await this.tracker.getAppliedMigrations();
-    const applied = appliedMigrations
-      .filter((m) => m.status === 'applied')
-      .sort((a, b) => b.version.localeCompare(a.version))
-      .slice(0, steps);
-
-    if (applied.length === 0) {
-      console.log('✅ No migrations to rollback');
-      return [];
-    }
-
-    console.log(`\n📦 Rolling back ${applied.length} migration(s)\n`);
-
-    const rolledBack: MigrationFile[] = [];
-
-    for (const record of applied) {
-      try {
-        const migrationFile = await this.loader.getMigration(record.version);
-
-        if (!migrationFile) {
-          throw new Error(`Migration file not found for version ${record.version}`);
-        }
-
-        console.log(`⬇️  Rolling back ${migrationFile.version}: ${migrationFile.name}`);
-
-        const context = this.createContext();
-        await migrationFile.migration.down(context);
-
-        await this.tracker.markAsRolledBack(migrationFile.version);
-
-        console.log(`✅ Rolled back ${migrationFile.version}: ${migrationFile.name}\n`);
-        rolledBack.push(migrationFile);
-      } catch (error: any) {
-        console.error(`❌ Failed to rollback ${record.version}: ${error.message}\n`);
-
-        await this.tracker.markAsFailed(record.version, error.message);
-
-        throw new Error(`Rollback of ${record.version} failed: ${error.message}`);
+    // Acquire lock unless dry run
+    if (!dryRun) {
+      const lockAcquired = await this.tracker.acquireLock();
+      if (!lockAcquired) {
+        throw new Error(
+          'Could not acquire migration lock. Another migration may be in progress.'
+        );
       }
     }
 
-    return rolledBack;
+    try {
+      const appliedMigrations = await this.tracker.getAppliedMigrations();
+      const applied = appliedMigrations
+        .filter((m) => m.status === 'applied')
+        .sort((a, b) => b.version.localeCompare(a.version))
+        .slice(0, steps);
+
+      if (applied.length === 0) {
+        console.log('✅ No migrations to rollback');
+        return [];
+      }
+
+      if (dryRun) {
+        console.log(`\n🔍 DRY RUN - Would rollback ${applied.length} migration(s):\n`);
+        for (const record of applied) {
+          console.log(`   ${record.version}: ${record.name}`);
+        }
+        console.log('\nNo changes were made.\n');
+        return [];
+      }
+
+      console.log(`\n📦 Rolling back ${applied.length} migration(s)\n`);
+
+      const rolledBack: MigrationFile[] = [];
+
+      for (const record of applied) {
+        try {
+          const migrationFile = await this.loader.getMigration(record.version);
+
+          if (!migrationFile) {
+            throw new Error(`Migration file not found for version ${record.version}`);
+          }
+
+          console.log(`⬇️  Rolling back ${migrationFile.version}: ${migrationFile.name}`);
+
+          const context = this.createContext();
+          await migrationFile.migration.down(context);
+
+          await this.tracker.markAsRolledBack(migrationFile.version);
+
+          console.log(`✅ Rolled back ${migrationFile.version}: ${migrationFile.name}\n`);
+          rolledBack.push(migrationFile);
+        } catch (error: any) {
+          console.error(`❌ Failed to rollback ${record.version}: ${error.message}\n`);
+
+          await this.tracker.markAsFailed(record.version, error.message);
+
+          throw new Error(`Rollback of ${record.version} failed: ${error.message}`);
+        }
+      }
+
+      return rolledBack;
+    } finally {
+      if (!dryRun) {
+        await this.tracker.releaseLock();
+      }
+    }
   }
 
   /**
@@ -187,20 +274,6 @@ export class MigrationRunner {
    * Create migration context
    */
   private createContext(): MigrationContext {
-    // Import DynamoDB commands
-    const {
-      ScanCommand,
-      QueryCommand,
-      GetCommand,
-      PutCommand,
-      UpdateCommand,
-      DeleteCommand,
-      BatchGetCommand,
-      BatchWriteCommand,
-      TransactWriteCommand,
-      TransactGetCommand,
-    } = require('@aws-sdk/lib-dynamodb');
-
     return {
       client: this.client,
       tableName: this.config.tableName,

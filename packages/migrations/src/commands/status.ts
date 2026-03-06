@@ -1,26 +1,9 @@
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 import { MigrationRunner } from '../core/runner';
+import { createDynamoDBClient } from '../core/client';
 import { MigrationConfig } from '../types';
 
 export async function showStatus(config: MigrationConfig): Promise<void> {
-  // Create DynamoDB client
-  const ddbClient = new DynamoDBClient({
-    region: config.client.region,
-    endpoint: config.client.endpoint,
-    credentials: config.client.credentials,
-  });
-
-  const client = DynamoDBDocumentClient.from(ddbClient, {
-    marshallOptions: {
-      removeUndefinedValues: true,
-      convertClassInstanceToMap: true,
-    },
-    unmarshallOptions: {
-      wrapNumbers: false,
-    },
-  });
-
+  const client = createDynamoDBClient(config);
   const runner = new MigrationRunner(client, config);
 
   try {

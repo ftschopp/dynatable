@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import * as crypto from 'crypto';
 import { Migration, MigrationFile } from '../types';
 
 /**
@@ -10,6 +11,14 @@ export class MigrationLoader {
 
   constructor(migrationsDir: string) {
     this.migrationsDir = migrationsDir;
+  }
+
+  /**
+   * Calculate checksum of a file
+   */
+  calculateChecksum(filePath: string): string {
+    const content = fs.readFileSync(filePath, 'utf-8');
+    return crypto.createHash('md5').update(content).digest('hex');
   }
 
   /**
@@ -53,63 +62,96 @@ export class MigrationLoader {
    * Load single migration file
    */
   private async loadMigration(filePath: string): Promise<MigrationFile | null> {
-    try {
-      // Convert to absolute path
-      const absolutePath = path.isAbsolute(filePath)
-        ? filePath
-        : path.resolve(process.cwd(), filePath);
+    // Convert to absolute path
+    const absolutePath = path.isAbsolute(filePath)
+      ? filePath
+      : path.resolve(process.cwd(), filePath);
 
-      let module: any;
+    let module: any;
 
-      // For TypeScript files, use require (ts-node must be registered)
-      if (absolutePath.endsWith('.ts')) {
-        // Register ts-node if not already registered
-        try {
-          require('ts-node').register({
-            transpileOnly: true,
-            skipProject: true, // Don't use project tsconfig
-            compilerOptions: {
-              module: 'commonjs',
-              target: 'ES2020',
-              esModuleInterop: true,
-              moduleResolution: 'node',
-            },
-          });
-        } catch {
-          // ts-node might already be registered
-        }
+    // For TypeScript files, use require (ts-node must be registered)
+    if (absolutePath.endsWith('.ts')) {
+      // Register ts-node if not already registered
+      this.registerTsNode();
 
-        // Clear require cache to reload file
-        delete require.cache[absolutePath];
+      // Clear require cache to reload file
+      delete require.cache[absolutePath];
 
+      try {
         module = require(absolutePath);
-      } else {
-        // For JavaScript files, use dynamic import
+      } catch (error: any) {
+        throw new Error(
+          `Failed to load TypeScript migration ${filePath}: ${error.message}. ` +
+            `Ensure ts-node is installed and the file has valid TypeScript syntax.`
+        );
+      }
+    } else {
+      // For JavaScript files, use dynamic import
+      try {
         const fileUrl = `file://${absolutePath}`;
         module = await import(fileUrl);
+      } catch (error: any) {
+        throw new Error(
+          `Failed to load JavaScript migration ${filePath}: ${error.message}`
+        );
+      }
+    }
+
+    const migration: Migration = module.migration || module.default;
+
+    if (!migration) {
+      console.warn(`Warning: No migration export found in ${filePath}`);
+      return null;
+    }
+
+    // Validate migration structure
+    this.validateMigration(migration, filePath);
+
+    const fileName = path.basename(filePath);
+    const { version, name } = this.parseMigrationFileName(fileName);
+
+    // Calculate checksum
+    const checksum = this.calculateChecksum(absolutePath);
+
+    return {
+      version,
+      name,
+      filePath,
+      migration,
+      checksum,
+    };
+  }
+
+  /**
+   * Register ts-node for TypeScript file loading
+   */
+  private registerTsNode(): void {
+    try {
+      // Check if ts-node is already registered
+      const tsNodeSymbol = Symbol.for('ts-node.register.instance');
+      if ((process as any)[tsNodeSymbol]) {
+        return; // Already registered
       }
 
-      const migration: Migration = module.migration || module.default;
-
-      if (!migration) {
-        console.warn(`Warning: No migration export found in ${filePath}`);
-        return null;
-      }
-
-      // Validate migration structure
-      this.validateMigration(migration, filePath);
-
-      const fileName = path.basename(filePath);
-      const { version, name } = this.parseMigrationFileName(fileName);
-
-      return {
-        version,
-        name,
-        filePath,
-        migration,
-      };
+      require('ts-node').register({
+        transpileOnly: true,
+        skipProject: true, // Don't use project tsconfig
+        compilerOptions: {
+          module: 'commonjs',
+          target: 'ES2020',
+          esModuleInterop: true,
+          moduleResolution: 'node',
+        },
+      });
     } catch (error: any) {
-      throw new Error(`Failed to load migration ${filePath}: ${error.message}`);
+      if (error.code === 'MODULE_NOT_FOUND') {
+        throw new Error(
+          'ts-node is required to load TypeScript migrations. ' +
+            'Install it with: npm install ts-node'
+        );
+      }
+      // Other errors might mean ts-node is already registered differently
+      console.warn(`Warning: Could not register ts-node: ${error.message}`);
     }
   }
 

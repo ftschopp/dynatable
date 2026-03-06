@@ -4,13 +4,14 @@ DynamoDB migration tool for single table design with schema versioning.
 
 ## Features
 
-- 🚀 **Single Table Design** - Built specifically for DynamoDB single table design patterns
-- 📊 **Schema Versioning** - Track schema evolution over time within your DynamoDB table
-- 🔄 **Up/Down Migrations** - Support for both applying and rolling back migrations
-- 📝 **Migration History** - All migration records stored in your DynamoDB table using Single Table Design
-- 🎯 **TypeScript First** - Full TypeScript support with type safety
-- 🛠️ **CLI Tool** - Easy-to-use command-line interface with beautiful UI (ora, chalk)
-- 📦 **Minimal Dependencies** - Only requires AWS SDK and CLI tools (commander, ora, chalk)
+- **Single Table Design** - Built specifically for DynamoDB single table design patterns
+- **Semantic Versioning** - Migrations use semver (0.1.0, 0.2.0, 1.0.0) for clear version tracking
+- **Up/Down Migrations** - Support for both applying and rolling back migrations
+- **Migration History** - All migration records stored in your DynamoDB table using Single Table Design
+- **Distributed Locking** - Prevents concurrent migrations with automatic lock expiration
+- **Dry Run Mode** - Preview changes before applying them
+- **TypeScript First** - Full TypeScript support with type safety
+- **CLI Tool** - Easy-to-use command-line interface
 
 ## Installation
 
@@ -58,10 +59,18 @@ module.exports = {
 ### 3. Create Migration
 
 ```bash
+# Create with auto-incremented patch version (default)
 npx dynatable-migrate create add_user_email
+
+# Create with specific bump type
+npx dynatable-migrate create add_feature --type minor
+npx dynatable-migrate create breaking_change --type major
+
+# Create with explicit version
+npx dynatable-migrate create custom_version --explicit 2.0.0
 ```
 
-This creates a file like `migrations/v0001_add_user_email.ts`
+This creates a file like `migrations/0.1.0_add_user_email.ts`
 
 ### 4. Edit Migration
 
@@ -69,11 +78,12 @@ This creates a file like `migrations/v0001_add_user_email.ts`
 import { Migration } from '@ftschopp/dynatable-migrations';
 
 export const migration: Migration = {
-  version: 'v0001',
+  version: '0.1.0',
   name: 'add_user_email',
   description: 'Add email field to User entity',
 
-  async up({ client, tableName, dynamodb }) {
+  async up(context) {
+    const { client, tableName, dynamodb } = context;
     const { ScanCommand, UpdateCommand } = dynamodb;
 
     // Scan all users
@@ -101,7 +111,8 @@ export const migration: Migration = {
     }
   },
 
-  async down({ client, tableName, dynamodb }) {
+  async down(context) {
+    const { client, tableName, dynamodb } = context;
     const { ScanCommand, UpdateCommand } = dynamodb;
 
     const result = await client.send(
@@ -128,20 +139,26 @@ export const migration: Migration = {
 ### 5. Run Migrations
 
 ```bash
+# Check status
+npx dynatable-migrate status
+
+# Preview changes (dry run)
+npx dynatable-migrate up --dry-run
+
 # Apply all pending migrations
 npx dynatable-migrate up
 
 # Apply only 1 migration
 npx dynatable-migrate up --limit 1
 
-# Check status
-npx dynatable-migrate status
-
 # Rollback last migration
 npx dynatable-migrate down
 
 # Rollback last 2 migrations
 npx dynatable-migrate down --steps 2
+
+# Preview rollback
+npx dynatable-migrate down --dry-run
 ```
 
 ## CLI Commands
@@ -165,6 +182,24 @@ dynatable-migrate create add_user_profile
 Options:
 
 - `-c, --config <path>` - Custom config file path
+- `-t, --type <type>` - Version bump type: `major`, `minor`, or `patch` (default: patch)
+- `-e, --explicit <version>` - Explicit version (e.g., 2.0.0)
+
+Examples:
+
+```bash
+# Patch bump: 0.1.0 -> 0.1.1
+dynatable-migrate create fix_typo
+
+# Minor bump: 0.1.1 -> 0.2.0
+dynatable-migrate create add_notifications --type minor
+
+# Major bump: 0.2.0 -> 1.0.0
+dynatable-migrate create breaking_schema_change --type major
+
+# Explicit version
+dynatable-migrate create hotfix --explicit 0.1.2
+```
 
 ### `up`
 
@@ -178,6 +213,7 @@ Options:
 
 - `-c, --config <path>` - Custom config file path
 - `-l, --limit <number>` - Limit number of migrations to run
+- `-d, --dry-run` - Preview what would be done without making changes
 
 ### `down`
 
@@ -191,6 +227,7 @@ Options:
 
 - `-c, --config <path>` - Custom config file path
 - `-s, --steps <number>` - Number of migrations to rollback (default: 1)
+- `-d, --dry-run` - Preview what would be done without making changes
 
 ### `status`
 
@@ -213,17 +250,9 @@ All migration tracking happens **within your DynamoDB table** using Single Table
 ```
 PK                      SK                version  status     appliedAt
 -----------------------------------------------------------------------
-_SCHEMA#VERSION         v0001             v0001    applied    2025-03-29T10:00:00Z
-_SCHEMA#VERSION         v0002             v0002    applied    2025-03-29T11:00:00Z
-_SCHEMA#VERSION#CURRENT _SCHEMA#VERSION   v0002    -          2025-03-29T11:00:00Z
-```
-
-A GSI (GSI1) is used to quickly find the current version:
-
-```
-GSI1PK            GSI1SK
----------------------------
-_SCHEMA#CURRENT   v0002
+_SCHEMA#VERSION         0.1.0             0.1.0    applied    2025-03-29T10:00:00Z
+_SCHEMA#VERSION         0.2.0             0.2.0    applied    2025-03-29T11:00:00Z
+_SCHEMA#VERSION#CURRENT _SCHEMA#VERSION   0.2.0    -          2025-03-29T11:00:00Z
 ```
 
 ### Migration Context
@@ -236,8 +265,16 @@ interface MigrationContext {
   tableName: string; // Your table name
   tracker: MigrationTracker; // Track schema changes
   config: MigrationConfig; // Your config
+  dynamodb: DynamoDBCommands; // Pre-imported DynamoDB commands
 }
 ```
+
+The `dynamodb` object includes all common commands:
+
+- `ScanCommand`, `QueryCommand`
+- `GetCommand`, `PutCommand`, `UpdateCommand`, `DeleteCommand`
+- `BatchGetCommand`, `BatchWriteCommand`
+- `TransactWriteCommand`, `TransactGetCommand`
 
 ### Schema Change Tracking
 
@@ -252,99 +289,6 @@ await tracker.recordSchemaChange({
     modified: [{ field: 'status', from: 'string', to: 'enum' }],
   },
 });
-```
-
-## Migration Examples
-
-### Add New Entity Type
-
-```typescript
-export const migration: Migration = {
-  version: 'v0003',
-  name: 'add_comment_entity',
-
-  async up({ client, tableName }) {
-    // In Single Table Design, you typically don't need to do anything
-    // Just document the schema change
-    console.log('Comment entity added to schema');
-  },
-
-  async down({ client, tableName }) {
-    // Delete all comments if rolling back
-    const { ScanCommand, DeleteCommand } = await import('@aws-sdk/lib-dynamodb');
-
-    const result = await client.send(
-      new ScanCommand({
-        TableName: tableName,
-        FilterExpression: 'begins_with(PK, :pk)',
-        ExpressionAttributeValues: { ':pk': 'COMMENT#' },
-      })
-    );
-
-    for (const item of result.Items || []) {
-      await client.send(
-        new DeleteCommand({
-          TableName: tableName,
-          Key: { PK: item.PK, SK: item.SK },
-        })
-      );
-    }
-  },
-};
-```
-
-### Change Key Structure
-
-```typescript
-export const migration: Migration = {
-  version: 'v0004',
-  name: 'change_photo_sort_key',
-
-  async up({ client, tableName }) {
-    // Change from SK: "PHOTO#${id}" to SK: "PHOTO#${timestamp}#${id}"
-    const { ScanCommand, TransactWriteCommand } = await import('@aws-sdk/lib-dynamodb');
-
-    const result = await client.send(
-      new ScanCommand({
-        TableName: tableName,
-        FilterExpression: 'begins_with(SK, :sk)',
-        ExpressionAttributeValues: { ':sk': 'PHOTO#' },
-      })
-    );
-
-    for (const photo of result.Items || []) {
-      const timestamp = new Date(photo.createdAt).getTime();
-      const photoId = photo.SK.replace('PHOTO#', '');
-
-      await client.send(
-        new TransactWriteCommand({
-          TransactItems: [
-            {
-              Delete: {
-                TableName: tableName,
-                Key: { PK: photo.PK, SK: photo.SK },
-              },
-            },
-            {
-              Put: {
-                TableName: tableName,
-                Item: {
-                  ...photo,
-                  SK: `PHOTO#${timestamp}#${photoId}`,
-                },
-              },
-            },
-          ],
-        })
-      );
-    }
-  },
-
-  async down({ client, tableName }) {
-    // Reverse the change
-    // ... similar logic but reverse
-  },
-};
 ```
 
 ## Configuration
@@ -372,7 +316,7 @@ interface MigrationConfig {
   // Optional: Tracking prefix (default: _SCHEMA#VERSION)
   trackingPrefix?: string;
 
-  // Optional: GSI name (default: GSI1)
+  // Optional: GSI name for queries (default: GSI1)
   gsi1Name?: string;
 }
 ```
@@ -382,39 +326,63 @@ interface MigrationConfig {
 You can also use the migration runner programmatically:
 
 ```typescript
-import { MigrationRunner, loadConfig } from '@ftschopp/dynatable-migrations';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import {
+  MigrationRunner,
+  loadConfig,
+  createDynamoDBClient,
+} from '@ftschopp/dynatable-migrations';
 
 const config = await loadConfig();
-const client = DynamoDBDocumentClient.from(
-  new DynamoDBClient({
-    region: config.client.region,
-    endpoint: config.client.endpoint,
-  })
-);
+const client = createDynamoDBClient(config);
 
 const runner = new MigrationRunner(client, config);
 
 // Run migrations
 await runner.up();
 
+// Run with options
+await runner.up({ limit: 1, dryRun: true });
+
 // Get status
 const status = await runner.status();
 
 // Rollback
-await runner.down(1);
+await runner.down({ steps: 1 });
+```
+
+### Available Exports
+
+```typescript
+// Core classes
+export { MigrationRunner } from './core/runner';
+export { MigrationLoader } from './core/loader';
+export { DynamoDBMigrationTracker } from './core/tracker';
+
+// Config
+export { loadConfig, ConfigLoader } from './core/config';
+export { createDynamoDBClient } from './core/client';
+
+// Commands (for programmatic use)
+export { createMigration } from './commands/create';
+export { runMigrations } from './commands/up';
+export { rollbackMigrations } from './commands/down';
+export { showStatus } from './commands/status';
+export { initProject } from './commands/init';
+
+// Types
+export * from './types';
 ```
 
 ## Best Practices
 
 1. **Always write down() functions** - Even if you think you won't need to rollback
 2. **Test migrations locally first** - Use DynamoDB Local
-3. **Backup before running** - Use DynamoDB point-in-time recovery
-4. **One change per migration** - Keep migrations focused
-5. **Don't modify applied migrations** - Create a new migration instead
-6. **Use transactions** - For multi-step changes that must be atomic
-7. **Document schema changes** - Use the schema snapshot field
+3. **Use dry-run mode** - Preview changes before applying: `dynatable-migrate up --dry-run`
+4. **Backup before running** - Use DynamoDB point-in-time recovery
+5. **One change per migration** - Keep migrations focused
+6. **Don't modify applied migrations** - Create a new migration instead
+7. **Use transactions** - For multi-step changes that must be atomic
+8. **Use semantic versioning** - major for breaking changes, minor for features, patch for fixes
 
 ## License
 

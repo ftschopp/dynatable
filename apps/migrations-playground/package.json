@@ -1,0 +1,36 @@
+{
+  "name": "migrations-playground",
+  "version": "1.0.0",
+  "description": "Interactive CLI to test and visualize DynamoDB migrations",
+  "main": "dist/index.js",
+  "scripts": {
+    "docker:up": "docker-compose up -d",
+    "docker:down": "docker-compose down",
+    "docker:reset": "docker-compose down -v && rm -rf ./dynamodb-data && docker-compose up -d",
+    "setup": "tsx src/setup-table.ts",
+    "start": "tsx src/cli.ts",
+    "repl": "tsx src/repl.ts",
+    "dev": "tsx src/cli.ts",
+    "build": "tsc",
+    "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
+    "migrate": "dynatable-migrate",
+    "migrate:status": "dynatable-migrate status",
+    "migrate:up": "dynatable-migrate up",
+    "migrate:down": "dynatable-migrate down",
+    "migrate:create": "dynatable-migrate create"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.965.0",
+    "@aws-sdk/lib-dynamodb": "^3.965.0",
+    "@ftschopp/dynatable-core": "*",
+    "@ftschopp/dynatable-migrations": "*",
+    "@inquirer/prompts": "^7.5.0",
+    "chalk": "^5.4.1",
+    "cli-table3": "^0.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.21",
+    "tsx": "^4.19.0",
+    "typescript": "5.9.3"
+  }
+}

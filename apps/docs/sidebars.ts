@@ -38,6 +38,17 @@ const sidebars: SidebarsConfig = {
     },
     {
       type: 'category',
+      label: 'Migrations',
+      collapsed: false,
+      items: [
+        'migrations/index',
+        'migrations/getting-started',
+        'migrations/cli-reference',
+        'migrations/patterns',
+      ],
+    },
+    {
+      type: 'category',
       label: 'Examples',
       collapsed: false,
       items: ['examples/blog-system', 'examples/instagram-clone'],

@@ -5,50 +5,78 @@ import styles from './styles.module.css';
 
 type FeatureItem = {
   title: string;
-  Svg: React.ComponentType<React.ComponentProps<'svg'>>;
+  icon: string;
   description: ReactNode;
 };
 
 const FeatureList: FeatureItem[] = [
   {
-    title: 'Easy to Use',
-    Svg: require('@site/static/img/undraw_docusaurus_mountain.svg').default,
+    title: 'Type-Safe DynamoDB',
+    icon: '🛡️',
     description: (
       <>
-        Docusaurus was designed from the ground up to be easily installed and used to get your
-        website up and running quickly.
+        Full TypeScript support with inferred types from your schema. Catch errors at compile time,
+        not runtime. Every query, mutation, and scan is fully typed.
       </>
     ),
   },
   {
-    title: 'Focus on What Matters',
-    Svg: require('@site/static/img/undraw_docusaurus_tree.svg').default,
+    title: 'Single Table Design',
+    icon: '📊',
     description: (
       <>
-        Docusaurus lets you focus on your docs, and we&apos;ll do the chores. Go ahead and move your
-        docs into the <code>docs</code> directory.
+        Built for DynamoDB best practices. Define multiple entities in one table with type-safe
+        access patterns. Support for GSIs, composite keys, and complex relationships.
       </>
     ),
   },
   {
-    title: 'Powered by React',
-    Svg: require('@site/static/img/undraw_docusaurus_react.svg').default,
+    title: 'Fluent Query Builder',
+    icon: '🔍',
     description: (
       <>
-        Extend or customize your website layout by reusing React. Docusaurus can be extended while
-        reusing the same header and footer.
+        Intuitive, chainable API for queries and scans. Filter, project, paginate, and more with
+        full type inference. No more raw DynamoDB expressions.
+      </>
+    ),
+  },
+  {
+    title: 'Schema Migrations',
+    icon: '🔄',
+    description: (
+      <>
+        Evolve your data safely with versioned migrations. Up/down support, dry-run mode,
+        distributed locking, and full CLI tooling included.
+      </>
+    ),
+  },
+  {
+    title: 'Minimal Boilerplate',
+    icon: '✨',
+    description: (
+      <>
+        Define your schema once, get typed CRUD operations automatically. No decorators, no
+        classes, just plain TypeScript objects.
+      </>
+    ),
+  },
+  {
+    title: 'Production Ready',
+    icon: '🚀',
+    description: (
+      <>
+        Built on top of AWS SDK v3. Supports transactions, batch operations, conditional writes,
+        and all DynamoDB features you need.
       </>
     ),
   },
 ];
 
-function Feature({ title, Svg, description }: FeatureItem) {
+function Feature({ title, icon, description }: FeatureItem) {
   return (
     <div className={clsx('col col--4')}>
-      <div className="text--center">
-        <Svg className={styles.featureSvg} role="img" />
-      </div>
       <div className="text--center padding-horiz--md">
+        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>{icon}</div>
         <Heading as="h3">{title}</Heading>
         <p>{description}</p>
       </div>

@@ -139,13 +139,24 @@ export interface MigrationTracker {
   getCurrentVersion(): Promise<string | null>;
 
   /**
+   * Acquire a distributed lock
+   */
+  acquireLock(): Promise<boolean>;
+
+  /**
+   * Release the distributed lock
+   */
+  releaseLock(): Promise<void>;
+
+  /**
    * Mark migration as applied
    */
   markAsApplied(
     version: string,
     name: string,
     schemaDefinition?: Record<string, any>,
-    schemaChanges?: SchemaChange[]
+    schemaChanges?: SchemaChange[],
+    checksum?: string
   ): Promise<void>;
 
   /**
@@ -182,6 +193,7 @@ export interface MigrationFile {
   name: string;
   filePath: string;
   migration: Migration;
+  checksum?: string;
 }
 
 /**

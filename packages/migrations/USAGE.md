@@ -59,7 +59,7 @@ module.exports = {
 npx dynatable-migrate create add_user_email
 ```
 
-Creates: `migrations/v0001_add_user_email.ts`
+Creates: `migrations/0.1.0_add_user_email.ts`
 
 ### 5. Edit the migration
 
@@ -67,14 +67,16 @@ Creates: `migrations/v0001_add_user_email.ts`
 import { Migration } from '@ftschopp/dynatable-migrations';
 
 export const migration: Migration = {
-  version: 'v0001',
+  version: '0.1.0',
   name: 'add_user_email',
 
-  async up({ client, tableName, tracker }) {
+  async up(context) {
+    const { client, tableName, dynamodb } = context;
     // Your migration code here
   },
 
-  async down({ client, tableName, dynamodb }) {
+  async down(context) {
+    const { client, tableName, dynamodb } = context;
     // Rollback code here
   },
 };
@@ -85,6 +87,9 @@ export const migration: Migration = {
 ```bash
 # Check status first
 npx dynatable-migrate status
+
+# Preview changes (dry run)
+npx dynatable-migrate up --dry-run
 
 # Apply all pending migrations
 npx dynatable-migrate up
@@ -99,10 +104,11 @@ npx dynatable-migrate down
 
 ```typescript
 export const migration: Migration = {
-  version: 'v0001',
+  version: '0.1.0',
   name: 'add_user_bio',
 
-  async up({ client, tableName }) {
+  async up(context) {
+    const { client, tableName, dynamodb } = context;
     const { ScanCommand, UpdateCommand } = dynamodb;
 
     // Find all users
@@ -127,8 +133,8 @@ export const migration: Migration = {
     }
   },
 
-  async down({ client, tableName, dynamodb }) {
-    // Remove the field
+  async down(context) {
+    const { client, tableName, dynamodb } = context;
     const { ScanCommand, UpdateCommand } = dynamodb;
 
     const result = await client.send(
@@ -156,10 +162,11 @@ export const migration: Migration = {
 
 ```typescript
 export const migration: Migration = {
-  version: 'v0002',
+  version: '0.2.0',
   name: 'normalize_usernames',
 
-  async up({ client, tableName }) {
+  async up(context) {
+    const { client, tableName, dynamodb } = context;
     const { ScanCommand, UpdateCommand } = dynamodb;
 
     const result = await client.send(
@@ -186,8 +193,8 @@ export const migration: Migration = {
     }
   },
 
-  async down({ client, tableName, dynamodb }) {
-    console.log('Cannot revert username normalization');
+  async down(context) {
+    console.log('Cannot revert username normalization - data transformation is one-way');
   },
 };
 ```
@@ -196,10 +203,11 @@ export const migration: Migration = {
 
 ```typescript
 export const migration: Migration = {
-  version: 'v0003',
+  version: '0.3.0',
   name: 'change_photo_sort_key',
 
-  async up({ client, tableName }) {
+  async up(context) {
+    const { client, tableName, dynamodb } = context;
     const { ScanCommand, TransactWriteCommand } = dynamodb;
 
     const result = await client.send(
@@ -249,17 +257,17 @@ export const migration: Migration = {
     }
   },
 
-  async down({ client, tableName, dynamodb }) {
-    // Similar logic but reverse
+  async down(context) {
+    // Similar logic but reverse the SK transformation
   },
 };
 ```
 
-### Pattern 4: Add New Entity Type (No Data Migration)
+### Pattern 4: Add New Entity Type (Schema Documentation Only)
 
 ```typescript
 export const migration: Migration = {
-  version: 'v0004',
+  version: '0.4.0',
   name: 'add_notification_entity',
 
   schema: {
@@ -269,31 +277,32 @@ export const migration: Migration = {
         SK: 'NOTIFICATION#${notificationId}',
       },
       attributes: {
-        userId: { type: String, required: true },
-        notificationId: { type: String, generate: 'ulid' },
-        message: { type: String, required: true },
-        read: { type: Boolean, default: false },
+        userId: { type: 'string', required: true },
+        notificationId: { type: 'string', generate: 'ulid' },
+        message: { type: 'string', required: true },
+        read: { type: 'boolean', default: false },
       },
     },
   },
 
-  async up({ tracker }) {
+  async up(context) {
     // In Single Table Design, adding a new entity type
     // doesn't require data migration, just schema documentation
-    await tracker.recordSchemaChange({
+    await context.tracker.recordSchemaChange({
       entity: 'Notification',
       changes: {
         added: ['userId', 'notificationId', 'message', 'read'],
       },
     });
 
-    console.log('✅ Notification entity added to schema');
+    console.log('Notification entity added to schema');
   },
 
-  async down({ client, tableName, dynamodb }) {
-    // Delete all notifications if rolling back
+  async down(context) {
+    const { client, tableName, dynamodb } = context;
     const { ScanCommand, DeleteCommand } = dynamodb;
 
+    // Delete all notifications if rolling back
     const result = await client.send(
       new ScanCommand({
         TableName: tableName,
@@ -314,6 +323,94 @@ export const migration: Migration = {
 };
 ```
 
+### Pattern 5: Batch Processing with Pagination
+
+```typescript
+export const migration: Migration = {
+  version: '0.5.0',
+  name: 'add_timestamps_to_all_items',
+
+  async up(context) {
+    const { client, tableName, dynamodb } = context;
+    const { ScanCommand, UpdateCommand } = dynamodb;
+
+    let lastEvaluatedKey: Record<string, any> | undefined;
+    let totalProcessed = 0;
+
+    do {
+      const result = await client.send(
+        new ScanCommand({
+          TableName: tableName,
+          ExclusiveStartKey: lastEvaluatedKey,
+          Limit: 100, // Process in batches
+        })
+      );
+
+      for (const item of result.Items || []) {
+        // Skip schema tracking items
+        if (item.PK?.startsWith('_SCHEMA#')) continue;
+
+        await client.send(
+          new UpdateCommand({
+            TableName: tableName,
+            Key: { PK: item.PK, SK: item.SK },
+            UpdateExpression: 'SET #createdAt = if_not_exists(#createdAt, :now), #updatedAt = :now',
+            ExpressionAttributeNames: {
+              '#createdAt': 'createdAt',
+              '#updatedAt': 'updatedAt',
+            },
+            ExpressionAttributeValues: {
+              ':now': new Date().toISOString(),
+            },
+          })
+        );
+        totalProcessed++;
+      }
+
+      lastEvaluatedKey = result.LastEvaluatedKey;
+      console.log(`Processed ${totalProcessed} items...`);
+    } while (lastEvaluatedKey);
+
+    console.log(`Migration complete. Total items updated: ${totalProcessed}`);
+  },
+
+  async down(context) {
+    // Removing timestamps is usually not needed, but here's how:
+    const { client, tableName, dynamodb } = context;
+    const { ScanCommand, UpdateCommand } = dynamodb;
+
+    let lastEvaluatedKey: Record<string, any> | undefined;
+
+    do {
+      const result = await client.send(
+        new ScanCommand({
+          TableName: tableName,
+          ExclusiveStartKey: lastEvaluatedKey,
+        })
+      );
+
+      for (const item of result.Items || []) {
+        if (item.PK?.startsWith('_SCHEMA#')) continue;
+
+        await client.send(
+          new UpdateCommand({
+            TableName: tableName,
+            Key: { PK: item.PK, SK: item.SK },
+            UpdateExpression: 'REMOVE #createdAt, #updatedAt',
+            ExpressionAttributeNames: {
+              '#createdAt': 'createdAt',
+              '#updatedAt': 'updatedAt',
+            },
+          })
+        );
+      }
+
+      lastEvaluatedKey = result.LastEvaluatedKey;
+    } while (lastEvaluatedKey);
+  },
+};
+```
+
 ## CLI Commands Reference
 
 ### `dynatable-migrate init`
@@ -327,11 +424,23 @@ Create a new migration file.
 **Options:**
 
 - `-c, --config <path>` - Custom config file path
+- `-t, --type <type>` - Version bump type: `major`, `minor`, or `patch` (default: patch)
+- `-e, --explicit <version>` - Explicit semver version (e.g., 2.0.0)
 
-**Example:**
+**Examples:**
 
 ```bash
-dynatable-migrate create add_user_profile
+# Create with patch bump (default): 0.1.0 -> 0.1.1
+dynatable-migrate create fix_typo
+
+# Create with minor bump: 0.1.1 -> 0.2.0
+dynatable-migrate create add_notifications --type minor
+
+# Create with major bump: 0.2.0 -> 1.0.0
+dynatable-migrate create breaking_change --type major
+
+# Create with explicit version
+dynatable-migrate create hotfix --explicit 0.1.2
 ```
 
 ### `dynatable-migrate up`
@@ -342,12 +451,16 @@ Run all pending migrations.
 
 - `-c, --config <path>` - Custom config file path
 - `-l, --limit <number>` - Limit migrations to run
+- `-d, --dry-run` - Preview changes without applying them
 
 **Examples:**
 
 ```bash
 # Run all pending
 dynatable-migrate up
+
+# Preview what would run
+dynatable-migrate up --dry-run
 
 # Run only next migration
 dynatable-migrate up --limit 1
@@ -364,12 +477,16 @@ Rollback migrations.
 
 - `-c, --config <path>` - Custom config file path
 - `-s, --steps <number>` - Number of migrations to rollback (default: 1)
+- `-d, --dry-run` - Preview changes without applying them
 
 **Examples:**
 
 ```bash
 # Rollback last migration
 dynatable-migrate down
+
+# Preview rollback
+dynatable-migrate down --dry-run
 
 # Rollback last 3 migrations
 dynatable-migrate down --steps 3
@@ -390,16 +507,16 @@ dynatable-migrate status
 ```
 📊 Migration Status
 
-Table: InstagramClone
-Current version: v0002
+Table: MyApp
+Current version: 0.2.0
 Migrations directory: ./migrations
 
 ✅ Applied (2):
-   v0001 - add_user_email (2025-03-29 10:00:00)
-   v0002 - normalize_usernames (2025-03-29 11:00:00)
+   0.1.0 - add_user_email (2025-03-29 10:00:00)
+   0.2.0 - normalize_usernames (2025-03-29 11:00:00)
 
 ⏳ Pending (1):
-   v0003 - change_photo_sort_key
+   0.3.0 - change_photo_sort_key
 
 Total: 3 migration(s)
 ```
@@ -443,41 +560,53 @@ Use DynamoDB Local to test migrations before running on production:
 docker run -p 8000:8000 amazon/dynamodb-local
 ```
 
-### 3. Backup Before Running
+### 3. Use Dry Run Mode
+
+Always preview changes before applying them:
+
+```bash
+dynatable-migrate up --dry-run
+```
+
+### 4. Backup Before Running
 
 Enable point-in-time recovery on your production tables.
 
-### 4. Keep Migrations Focused
+### 5. Keep Migrations Focused
 
 One migration = one change. Don't combine multiple unrelated changes.
 
-### 5. Never Modify Applied Migrations
+### 6. Never Modify Applied Migrations
 
 Once a migration is applied, don't change it. Create a new migration instead.
 
-### 6. Use Transactions for Atomic Operations
+### 7. Use Transactions for Atomic Operations
 
 For multi-step changes that must succeed or fail together:
 
 ```typescript
-await client.send(new TransactWriteCommand({
-  TransactItems: [
-    { Put: { ... } },
-    { Update: { ... } },
-    { Delete: { ... } }
-  ]
-}));
+await client.send(
+  new context.dynamodb.TransactWriteCommand({
+    TransactItems: [{ Put: { ... } }, { Update: { ... } }, { Delete: { ... } }],
+  })
+);
 ```
 
-### 7. Handle Large Datasets Carefully
+### 8. Handle Large Datasets Carefully
 
 For tables with many items:
 
-- Process in batches
+- Process in batches with pagination
 - Add delays between batches to avoid throttling
 - Consider using DynamoDB Streams for background processing
 
-### 8. Document Your Changes
+### 9. Use Semantic Versioning
+
+- **Major** (1.0.0): Breaking schema changes
+- **Minor** (0.1.0): New features, new entity types
+- **Patch** (0.0.1): Bug fixes, small adjustments
+
+### 10. Document Your Changes
 
 Use the `schema` field to document what changed:
 
@@ -509,7 +638,7 @@ If a migration fails partway through:
 
 Make sure:
 
-- Migration file follows naming convention: `v0001_name.ts`
+- Migration file follows naming convention: `0.1.0_name.ts`
 - File is in the `migrationsDir` specified in config
 - File exports a `migration` object
 
@@ -524,34 +653,44 @@ Ensure your AWS credentials have permissions for:
 - `dynamodb:UpdateItem`
 - `dynamodb:DeleteItem`
 
+### Lock Acquisition Failed
+
+If you see "Could not acquire migration lock":
+
+- Another migration may be running
+- Wait a few minutes (lock expires after 5 minutes)
+- Check if any stuck processes are running
+
 ## Advanced: Programmatic Usage
 
 You can also use the migration runner in your code:
 
 ```typescript
-import { MigrationRunner, loadConfig } from '@ftschopp/dynatable-migrations';
-import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
+import {
+  MigrationRunner,
+  loadConfig,
+  createDynamoDBClient,
+} from '@ftschopp/dynatable-migrations';
 
 async function runMigrations() {
   const config = await loadConfig();
-
-  const ddbClient = new DynamoDBClient({
-    region: config.client.region,
-    endpoint: config.client.endpoint,
-  });
-
-  const client = DynamoDBDocumentClient.from(ddbClient);
+  const client = createDynamoDBClient(config);
   const runner = new MigrationRunner(client, config);
 
   // Get status
   const status = await runner.status();
   console.log('Migration status:', status);
 
+  // Preview migrations (dry run)
+  await runner.up({ dryRun: true });
+
   // Run migrations
   await runner.up();
 
+  // Run with limit
+  await runner.up({ limit: 1 });
+
   // Rollback
-  await runner.down(1);
+  await runner.down({ steps: 1 });
 }
 ```

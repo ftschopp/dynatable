@@ -113,6 +113,10 @@ const config: Config = {
               to: '/docs/guides/single-table-design',
             },
             {
+              label: 'Migrations',
+              to: '/docs/migrations',
+            },
+            {
               label: 'Examples',
               to: '/docs/examples/blog-system',
             },

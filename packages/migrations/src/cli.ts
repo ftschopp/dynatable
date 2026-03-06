@@ -8,12 +8,15 @@ import { rollbackMigrations } from './commands/down';
 import { showStatus } from './commands/status';
 import { initProject } from './commands/init';
 
+// Read version from package.json
+const packageJson = require('../package.json');
+
 const program = new Command();
 
 program
   .name('dynatable-migrate')
   .description('DynamoDB migration tool for single table design')
-  .version('0.1.0');
+  .version(packageJson.version);
 
 // Init command
 program
@@ -60,11 +63,12 @@ program
   .description('Run pending migrations')
   .option('-c, --config <path>', 'Path to config file')
   .option('-l, --limit <number>', 'Limit number of migrations to run')
+  .option('-d, --dry-run', 'Show what would be done without making changes')
   .action(async (options) => {
     try {
       const config = await loadConfig(options.config);
       const limit = options.limit ? parseInt(options.limit, 10) : undefined;
-      await runMigrations(config, limit);
+      await runMigrations(config, limit, options.dryRun);
     } catch (error: any) {
       console.error(`Error: ${error.message}`);
       process.exit(1);
@@ -77,11 +81,12 @@ program
   .description('Rollback migrations')
   .option('-c, --config <path>', 'Path to config file')
   .option('-s, --steps <number>', 'Number of migrations to rollback', '1')
+  .option('-d, --dry-run', 'Show what would be done without making changes')
   .action(async (options) => {
     try {
       const config = await loadConfig(options.config);
       const steps = parseInt(options.steps, 10);
-      await rollbackMigrations(config, steps);
+      await rollbackMigrations(config, steps, options.dryRun);
     } catch (error: any) {
       console.error(`Error: ${error.message}`);
       process.exit(1);
