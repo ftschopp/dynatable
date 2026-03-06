@@ -1,3 +1,10 @@
+# @ftschopp/dynatable-migrations [1.2.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.1.0...@ftschopp/dynatable-migrations@1.2.0) (2026-03-06)
+
+
+### Features
+
+* add migrations playground ([660acf8](https://github.com/ftschopp/dynatable/commit/660acf84d5ddbedba87b86310b1a9f70886c6fde))
+
 # @ftschopp/dynatable-migrations [1.1.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.0.0...@ftschopp/dynatable-migrations@1.1.0) (2026-01-20)
 
 
