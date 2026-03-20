@@ -1,3 +1,10 @@
+# @ftschopp/dynatable-core [1.2.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.1.0...@ftschopp/dynatable-core@1.2.0) (2026-03-20)
+
+
+### Features
+
+* support nested objects and arrays schema ([c06e43e](https://github.com/ftschopp/dynatable/commit/c06e43e6b425bae09f127d2f767b5c8c62dd1142))
+
 # @ftschopp/dynatable-core [1.1.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.0.0...@ftschopp/dynatable-core@1.1.0) (2026-01-20)
 
 
