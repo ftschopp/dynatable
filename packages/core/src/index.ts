@@ -14,6 +14,7 @@ export {
   type InferModelFromSchema,
   type InferInputFromSchema,
   type TimestampFields,
+  type ArrayItem,
 } from './core/types';
 export {
   createDynamoDBLogger,

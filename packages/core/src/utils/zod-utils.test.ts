@@ -71,9 +71,9 @@ describe('zod-utils', () => {
       expect(() => zodType.parse(undefined)).toThrow();
     });
 
-    it('should return z.unknown() for unknown types', () => {
+    it('should return z.unknown() for unrecognized types', () => {
       const attr: AttributeDefinition = {
-        type: Array as any,
+        type: Map as any,
         required: true,
       };
       const zodType = typeToZod(attr);
@@ -82,6 +82,101 @@ describe('zod-utils', () => {
       expect(() => zodType.parse('anything')).not.toThrow();
       expect(() => zodType.parse(123)).not.toThrow();
       expect(() => zodType.parse([])).not.toThrow();
+    });
+
+    it('should convert Object type with schema to z.looseObject()', () => {
+      const attr: AttributeDefinition = {
+        type: Object,
+        schema: {
+          city: { type: String, required: true },
+          zip: { type: String },
+        },
+        required: true,
+      };
+      const zodType = typeToZod(attr);
+
+      expect(() => zodType.parse({ city: 'BA' })).not.toThrow();
+      expect(() => zodType.parse({ city: 'BA', zip: '1000' })).not.toThrow();
+      expect(() => zodType.parse({ zip: '1000' })).toThrow(); // city required
+      expect(() => zodType.parse({})).toThrow();
+    });
+
+    it('should convert Object type without schema to z.record()', () => {
+      const attr: AttributeDefinition = {
+        type: Object,
+        schema: {},
+      };
+      const zodType = typeToZod(attr);
+      expect(() => zodType.parse({})).not.toThrow();
+    });
+
+    it('should convert Array type with scalar items', () => {
+      const attr: AttributeDefinition = {
+        type: Array,
+        items: { type: String },
+        required: true,
+      };
+      const zodType = typeToZod(attr);
+
+      expect(() => zodType.parse(['a', 'b'])).not.toThrow();
+      expect(() => zodType.parse([])).not.toThrow();
+      expect(() => zodType.parse([1, 2])).toThrow(); // numbers, not strings
+    });
+
+    it('should convert Array type with object items (like history)', () => {
+      const attr: AttributeDefinition = {
+        type: Array,
+        items: {
+          type: Object,
+          schema: {
+            date: { type: String },
+            status: { type: String, required: true },
+          },
+        },
+        required: true,
+      };
+      const zodType = typeToZod(attr);
+
+      expect(() => zodType.parse([{ status: 'PENDING' }])).not.toThrow();
+      expect(() =>
+        zodType.parse([{ date: '2024-01-01', status: 'DONE' }])
+      ).not.toThrow();
+      expect(() => zodType.parse([{ date: '2024-01-01' }])).toThrow(); // missing status
+    });
+
+    it('should handle optional Object attribute', () => {
+      const attr: AttributeDefinition = {
+        type: Object,
+        schema: { name: { type: String, required: true } },
+      };
+      const zodType = typeToZod(attr);
+
+      expect(() => zodType.parse(undefined)).not.toThrow();
+      expect(() => zodType.parse({ name: 'test' })).not.toThrow();
+    });
+
+    it('should handle deeply nested objects', () => {
+      const attr: AttributeDefinition = {
+        type: Object,
+        required: true,
+        schema: {
+          value: { type: Number, required: true },
+          breakdown: {
+            type: Object,
+            schema: {
+              base: { type: Number, required: true },
+              fees: { type: Number, required: true },
+            },
+          },
+        },
+      };
+      const zodType = typeToZod(attr);
+
+      expect(() =>
+        zodType.parse({ value: 100, breakdown: { base: 90, fees: 10 } })
+      ).not.toThrow();
+      expect(() => zodType.parse({ value: 100 })).not.toThrow(); // breakdown optional
+      expect(() => zodType.parse({})).toThrow(); // value required
     });
   });
 

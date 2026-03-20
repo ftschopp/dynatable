@@ -211,35 +211,58 @@ birthDate: {
 
 ### Array
 
+Use `type: Array` for a list of any values, or add `items` to get a fully typed array:
+
 ```typescript
+// Untyped array
 tags: {
-  type: Array;
+  type: Array,
+  default: [],
+}
+
+// Typed array of scalars
+scores: {
+  type: Array,
+  items: { type: Number },
+}
+
+// Typed array of objects
+frames: {
+  type: Array,
+  default: [],
+  items: {
+    type: Object,
+    schema: {
+      url: { type: String, required: true },
+      duration: { type: Number },
+    },
+  },
 }
 ```
 
 ### Object
 
+Use `type: Object` for free-form maps, or add `schema` for a typed nested object:
+
 ```typescript
+// Untyped object (any shape)
 metadata: {
-  type: Object;
+  type: Object,
+}
+
+// Typed nested object
+location: {
+  type: Object,
+  schema: {
+    city: { type: String },
+    country: { type: String, required: true },
+    lat: { type: Number },
+    lng: { type: Number },
+  },
 }
 ```
 
-### Set
-
-DynamoDB supports number sets, string sets, and binary sets:
-
-```typescript
-favoriteNumbers: {
-  type: Set,
-  items: Number  // NumberSet
-}
-
-tags: {
-  type: Set,
-  items: String  // StringSet
-}
-```
+Schemas can nest arbitrarily deep — an `Object` schema field can itself contain `Array` items, and vice versa.
 
 ## Attribute Options
 
@@ -436,6 +459,28 @@ user.email; // string
 user.age; // number | undefined
 user.isActive; // boolean
 user.createdAt; // Date
+```
+
+### Extracting Entity and Item Types
+
+Use `InferModelFromSchema` and `InferInputFromSchema` to extract typed entity interfaces:
+
+```typescript
+import type { InferModelFromSchema, InferInputFromSchema, ArrayItem } from '@ftschopp/dynatable-core';
+
+type UserEntity = InferModelFromSchema<typeof BlogSchema, 'User'>;
+// createdAt / updatedAt are included automatically when params.timestamps = true
+
+type UserInput = InferInputFromSchema<typeof BlogSchema, 'User'>;
+// generated fields (ulid/uuid) and timestamps are excluded
+```
+
+For array attributes with a typed `items` schema, use `ArrayItem<T>` to extract the element type:
+
+```typescript
+type StoryEntity = InferModelFromSchema<typeof schema, 'Story'>;
+type StoryFrame = ArrayItem<StoryEntity['frames']>;
+// → { url: string; duration?: number }
 ```
 
 ## Schema Validation

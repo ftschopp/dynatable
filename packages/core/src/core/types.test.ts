@@ -504,3 +504,140 @@ describe('Timestamp Type Inference', () => {
     expect(timestamps.updatedAt).toBe('2024-01-01T00:00:00.000Z');
   });
 });
+
+// ============================================================================
+// Nested Object & Array Type Inference Tests
+// ============================================================================
+
+describe('Nested Object and Array Type Inference', () => {
+  const TransactionSchema = {
+    format: 'dynatable:1.0.0',
+    version: '1.0.0',
+    indexes: { primary: { hash: 'PK', sort: 'SK' } },
+    models: {
+      Transaction: {
+        key: {
+          PK: { type: String, value: 'USER#${userId}' },
+          SK: { type: String, value: 'TX#${txId}' },
+        },
+        attributes: {
+          userId: { type: String, required: true },
+          txId: { type: String, required: true },
+          status: { type: String, required: true },
+          // Nested object with schema
+          address: {
+            type: Object,
+            schema: {
+              street: { type: String },
+              city: { type: String, required: true },
+              country: { type: String, required: true },
+            },
+          },
+          // Array of scalar items
+          tags: {
+            type: Array,
+            items: { type: String },
+            default: [],
+          },
+          // Array of objects with schema (like history in the real example)
+          history: {
+            type: Array,
+            default: [],
+            items: {
+              type: Object,
+              schema: {
+                date: { type: String },
+                description: { type: String },
+                status: { type: String, required: true },
+              },
+            },
+          },
+          // Deeply nested object
+          amount: {
+            type: Object,
+            schema: {
+              value: { type: Number, required: true },
+              currency: { type: String, required: true },
+              breakdown: {
+                type: Object,
+                schema: {
+                  base: { type: Number, required: true },
+                  fees: { type: Number, required: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  } as const satisfies SchemaDefinition;
+
+  type Transaction = InferModelFromSchema<typeof TransactionSchema, 'Transaction'>;
+
+  test('schema with nested Object attribute compiles', () => {
+    expect(TransactionSchema.models.Transaction.attributes.address.type).toBe(Object);
+  });
+
+  test('schema with Array of objects compiles', () => {
+    expect(TransactionSchema.models.Transaction.attributes.history.type).toBe(Array);
+  });
+
+  test('inferred type accepts valid nested object', () => {
+    const tx: Transaction = {
+      userId: 'u1',
+      txId: 'tx1',
+      status: 'PENDING',
+      address: { city: 'Buenos Aires', country: 'AR' },
+      tags: ['fast', 'verified'],
+      history: [
+        { date: '2024-01-01', description: 'Created', status: 'PENDING' },
+        { status: 'COMPLETED' },
+      ],
+      amount: {
+        value: 100,
+        currency: 'USD',
+        breakdown: { base: 90, fees: 10 },
+      },
+    };
+
+    expect(tx.userId).toBe('u1');
+    expect(tx.address?.city).toBe('Buenos Aires');
+    expect(tx.history?.[0]?.status).toBe('PENDING');
+    expect(tx.amount?.breakdown?.base).toBe(90);
+    expect(tx.tags?.[0]).toBe('fast');
+  });
+
+  test('inferred nested object type requires its required fields', () => {
+    type Address = NonNullable<Transaction['address']>;
+
+    // city and country are required — this must compile
+    const validAddress: Address = { city: 'BA', country: 'AR' };
+    expect(validAddress.city).toBe('BA');
+
+    // Verify the shape: optional `street`, required `city` and `country`
+    type AddressKeys = keyof Required<Address>;
+    const _keys: AddressKeys[] = ['street', 'city', 'country'];
+    expect(_keys).toContain('city');
+  });
+
+  test('model with nested attributes satisfies ModelDefinition', () => {
+    const model = {
+      key: {
+        PK: { type: String, value: 'ITEM#${id}' },
+        SK: { type: String, value: 'ITEM#${id}' },
+      },
+      attributes: {
+        id: { type: String, required: true },
+        meta: {
+          type: Object,
+          schema: {
+            createdBy: { type: String },
+            tags: { type: Array, items: { type: String } },
+          },
+        },
+      },
+    } as const satisfies ModelDefinition;
+
+    expect(model.attributes.meta.type).toBe(Object);
+  });
+});

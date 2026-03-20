@@ -71,9 +71,10 @@ export const applyPostDefaults = <M extends ModelDefinition>(
 
   for (const [key, attr] of Object.entries(model.attributes)) {
     if (result[key] === undefined) {
-      if (attr.generate === 'ulid') {
+      const generate = 'generate' in attr ? attr.generate : undefined;
+      if (generate === 'ulid') {
         result[key] = ulid();
-      } else if (attr.generate === 'uuid') {
+      } else if (generate === 'uuid') {
         result[key] = crypto.randomUUID();
       } else if (attr.default !== undefined) {
         result[key] = typeof attr.default === 'function' ? attr.default() : attr.default;

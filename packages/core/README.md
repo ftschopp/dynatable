@@ -130,6 +130,21 @@ const schema = {
         email: { type: String },
         userId: { type: String, generate: 'ulid' },
         followerCount: { type: Number, default: 0 },
+        // Nested object with typed schema
+        address: {
+          type: Object,
+          schema: {
+            street: { type: String },
+            city: { type: String, required: true },
+            country: { type: String, required: true },
+          },
+        },
+        // Typed array with item schema
+        tags: {
+          type: Array,
+          default: [],
+          items: { type: String },
+        },
       },
     },
   },
@@ -142,24 +157,85 @@ const schema = {
 } as const;
 ```
 
+### Nested Objects and Arrays
+
+Attributes support typed nested schemas for full TypeScript inference:
+
+```typescript
+Story: {
+  attributes: {
+    // Typed array of objects
+    frames: {
+      type: Array,
+      default: [],
+      items: {
+        type: Object,
+        schema: {
+          url: { type: String, required: true },
+          duration: { type: Number },
+          mediaType: { type: String },
+        },
+      },
+    },
+    // Nested object with a typed schema
+    location: {
+      type: Object,
+      schema: {
+        city: { type: String },
+        country: { type: String },
+        lat: { type: Number },
+        lng: { type: Number },
+      },
+    },
+  },
+}
+```
+
+Use `ArrayItem<T>` to extract item types from array attributes:
+
+```typescript
+import type { InferModelFromSchema, ArrayItem } from '@ftschopp/dynatable-core';
+
+type StoryEntity = InferModelFromSchema<typeof schema, 'Story'>;
+type StoryFrame = ArrayItem<StoryEntity['frames']>;
+// → { url: string; duration?: number; mediaType?: string }
+```
+
 ### Type Inference
 
 Extract types from your schema:
 
 ```typescript
-import type { InferModel, InferInput, InferKeyInput } from '@ftschopp/dynatable-core';
+import type {
+  InferModel,
+  InferInput,
+  InferKeyInput,
+  InferModelFromSchema,
+  InferInputFromSchema,
+  ArrayItem,
+} from '@ftschopp/dynatable-core';
 
-// Full model type (includes timestamps if enabled)
-type User = InferModel<typeof schema.models.User>;
+// Preferred: infer from the full schema (timestamps included automatically)
+type User = InferModelFromSchema<typeof schema, 'User'>;
 // { username: string; name: string; email?: string; userId: string; followerCount: number; createdAt: string; updatedAt: string }
 
-// Input type (excludes generated fields and timestamps)
-type UserInput = InferInput<typeof schema.models.User>;
-// { username: string; name: string; email?: string; userId?: string; followerCount?: number }
+type UserInput = InferInputFromSchema<typeof schema, 'User'>;
+// { username: string; name: string; email?: string; followerCount?: number }
+
+// Full model type (deprecated — use InferModelFromSchema)
+type UserLegacy = InferModel<typeof schema.models.User>;
+
+// Input type (deprecated — use InferInputFromSchema)
+type UserInputLegacy = InferInput<typeof schema.models.User>;
 
 // Key input type (only key template variables)
 type UserKey = InferKeyInput<typeof schema.models.User>;
 // { username: string }
+
+// Extract item type from an array attribute
+type StoryEntity = InferModelFromSchema<typeof schema, 'Story'>;
+type StoryFrame = ArrayItem<StoryEntity['frames']>;
+// → { url: string; duration?: number; mediaType?: string }
 ```
 
 ### Builder Operations
@@ -393,18 +469,28 @@ if (page1.lastEvaluatedKey) {
 
 ```typescript
 export {
-  Table,                      // Main Table class
-  type SchemaDefinition,      // Schema type
-  type ModelDefinition,       // Model type
-  type InferModel,            // Infer model type
-  type InferInput,            // Infer input type
-  type InferKeyInput,         // Infer key type
-  type InferModelFromSchema,  // Infer from schema
-  type InferInputFromSchema,  // Infer input from schema
-  type TimestampFields,       // Timestamp fields type
-  createDynamoDBLogger,       // Logger factory
-  type DynamoDBLogger,        // Logger type
-  type DynamoDBLoggerConfig,  // Logger config
+  Table,                           // Main Table class
+  type SchemaDefinition,           // Schema type
+  type ModelDefinition,            // Model type
+  type AttributeDefinition,        // Union of all attribute types
+  type ScalarAttributeDefinition,  // String/Number/Boolean/Date attribute
+  type ObjectAttributeDefinition,  // Nested object attribute with schema
+  type ArrayAttributeDefinition,   // Typed array attribute with items
+  type PrimaryKeyDefinition,       // PK + SK key definition
+  type KeyDefinition,              // Single key definition
+  type IndexDefinition,            // Index (hash + optional sort)
+  type IndexesDefinition,          // All table indexes
+  type SchemaParams,               // Global schema params
+  type InferModel,                 // Infer model type (deprecated)
+  type InferInput,                 // Infer input type (deprecated)
+  type InferKeyInput,              // Infer key type
+  type InferModelFromSchema,       // Infer from full schema (preferred)
+  type InferInputFromSchema,       // Infer input from full schema (preferred)
+  type TimestampFields,            // createdAt/updatedAt fields type
+  type ArrayItem,                  // Extract item type from array attribute
+  createDynamoDBLogger,            // Logger factory
+  type DynamoDBLogger,             // Logger type
+  type DynamoDBLoggerConfig,       // Logger config
 };
 ```
 

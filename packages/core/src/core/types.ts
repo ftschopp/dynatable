@@ -28,19 +28,67 @@
 // -------------------- Type Definitions --------------------
 
 /**
- * Attribute definition for model attributes
- *
- * @property type - The JavaScript constructor for the attribute type
- * @property [required] - Whether the attribute is required
- * @property [generate] - Auto-generation strategy ('ulid', 'uuid')
- * @property [default] - Default value or generator function
+ * Scalar attribute definition (String, Number, Boolean, Date)
  */
-export type AttributeDefinition = {
+export type ScalarAttributeDefinition = {
   type: StringConstructor | NumberConstructor | BooleanConstructor | DateConstructor;
   required?: boolean;
   generate?: 'ulid' | 'uuid';
   default?: any;
+  nulls?: boolean;
 };
+
+/**
+ * Object attribute definition with a nested schema
+ *
+ * @example
+ * address: {
+ *   type: Object,
+ *   schema: {
+ *     street: { type: String },
+ *     city: { type: String, required: true },
+ *   }
+ * }
+ */
+export type ObjectAttributeDefinition = {
+  type: ObjectConstructor;
+  schema: Record<string, AttributeDefinition>;
+  required?: boolean;
+  default?: any;
+  nulls?: boolean;
+};
+
+/**
+ * Array attribute definition with a typed items schema
+ *
+ * @example
+ * history: {
+ *   type: Array,
+ *   default: [],
+ *   items: {
+ *     type: Object,
+ *     schema: {
+ *       date: { type: String },
+ *       status: { type: String },
+ *     }
+ *   }
+ * }
+ */
+export type ArrayAttributeDefinition = {
+  type: ArrayConstructor;
+  items: AttributeDefinition;
+  required?: boolean;
+  default?: any;
+  nulls?: boolean;
+};
+
+/**
+ * Attribute definition for model attributes — supports scalars, nested objects, and arrays
+ */
+export type AttributeDefinition =
+  | ScalarAttributeDefinition
+  | ObjectAttributeDefinition
+  | ArrayAttributeDefinition;
 
 /**
  * Key definition for primary and secondary indexes
@@ -114,17 +162,34 @@ export type SchemaDefinition = {
   params?: SchemaParams;
 };
 
-type InferAttr<T> = T extends StringConstructor
-  ? string
-  : T extends NumberConstructor
-    ? number
-    : T extends BooleanConstructor
-      ? boolean
-      : T extends DateConstructor
-        ? Date
-        : unknown;
+/**
+ * Recursively infers the TypeScript type from an AttributeDefinition.
+ * - Object → infers the nested schema shape
+ * - Array  → infers an array of the items type
+ * - Scalars → maps to the corresponding primitive
+ */
+type InferAttr<A> = A extends { type: ObjectConstructor; schema: infer S }
+  ? InferObjectSchema<S>
+  : A extends { type: ArrayConstructor; items: infer I }
+    ? Array<InferAttr<I>>
+    : A extends { type: StringConstructor }
+      ? string
+      : A extends { type: NumberConstructor }
+        ? number
+        : A extends { type: BooleanConstructor }
+          ? boolean
+          : A extends { type: DateConstructor }
+            ? Date
+            : unknown;
 
-type IsOptional<T> = undefined extends T ? true : false;
+/**
+ * Infers the shape of a nested object schema, respecting required/optional fields.
+ */
+type InferObjectSchema<S> = {
+  [K in keyof S as S[K] extends { required: true } ? K : never]: InferAttr<S[K]>;
+} & {
+  [K in keyof S as S[K] extends { required: true } ? never : K]?: InferAttr<S[K]>;
+};
 
 /**
  * Non-generated attributes for input
@@ -135,7 +200,7 @@ type NonGeneratedAttributes<M extends ModelDefinition> = {
     ? never
     : M['attributes'][K] extends { required: true }
       ? K
-      : never]: InferAttr<M['attributes'][K]['type']>;
+      : never]: InferAttr<M['attributes'][K]>;
 } & {
   [K in keyof M['attributes'] as M['attributes'][K] extends { generate: string }
     ? never
@@ -143,7 +208,7 @@ type NonGeneratedAttributes<M extends ModelDefinition> = {
       ? K
       : M['attributes'][K] extends { required: true }
         ? never
-        : K]?: InferAttr<M['attributes'][K]['type']>;
+        : K]?: InferAttr<M['attributes'][K]>;
 };
 
 /**
@@ -152,7 +217,7 @@ type NonGeneratedAttributes<M extends ModelDefinition> = {
 type GeneratedAttributes<M extends ModelDefinition> = {
   [K in keyof M['attributes'] as M['attributes'][K] extends { generate: string }
     ? K
-    : never]: InferAttr<M['attributes'][K]['type']>;
+    : never]: InferAttr<M['attributes'][K]>;
 };
 
 /**
@@ -289,3 +354,14 @@ type KeyTemplateVars<M extends ModelDefinition> = PrimaryKeyVars<M>;
 export type InferKeyInput<M extends ModelDefinition> = {
   [K in KeyTemplateVars<M>]: string;
 };
+
+/**
+ * Extracts the item type from an array attribute.
+ *
+ * @example
+ * type StoryFrame = ArrayItem<StoryEntity['frames']>;
+ * // → { url: string; duration?: number; mediaType?: string }
+ *
+ * type HistoryEntry = ArrayItem<TransactionEntity['history']>;
+ */
+export type ArrayItem<T extends readonly unknown[] | undefined> = NonNullable<T>[number];

@@ -17,21 +17,21 @@ A complete example of an Instagram clone with users, photos, likes, comments, an
 │ followerCnt │        ││ url         │
 │ followingCnt│        ││ likesCount  │
 └──────┬──────┘        ││ commentCount│
-       │               │└──────┬──────┘
-       │ N:M           │       │ 1:N
-       │ (Follow)      │       │
-       │               │       ▼
-       │               │  ┌─────────────┐
-       │               │  │   Comment   │
-       │               │  ├─────────────┤
-       │               │  │ photoId  FK │
-       │               │  │ commentId PK│
-       │               │  │ username FK │
-       │               │  │ content     │
-       │               │  └─────────────┘
+       │    │          │└──────┬──────┘
+       │    │ 1:N      │       │ 1:N
+       │    │          │       │
+       │    ▼          │       ▼
+       │  ┌──────────┐ │  ┌─────────────┐
+       │  │  Story   │ │  │   Comment   │
+       │  ├──────────┤ │  ├─────────────┤
+       │  │username  │ │  │ photoId  FK │
+       │  │storyId PK│ │  │ commentId PK│
+       │  │frames [] │ │  │ username FK │
+       │  │location  │ │  │ content     │
+       │  └──────────┘ │  └─────────────┘
        │               │
-       │               │  ┌─────────────┐
-       │               └─►│    Like     │
+       │ N:M           │  ┌─────────────┐
+       │ (Follow)      └─►│    Like     │
        │                  ├─────────────┤
        │                  │ photoId  FK │
        │                  │ username FK │
@@ -47,6 +47,7 @@ A complete example of an Instagram clone with users, photos, likes, comments, an
 | ----------- | --------------------------- | ---------------------------- | ---------------------------- | --------------------------- |
 | User        | `USER#{username}`           | `USER#{username}`            | -                            | -                           |
 | Photo       | `UP#{username}`             | `PHOTO#{photoId}`            | -                            | -                           |
+| Story       | `UP#{username}`             | `STORY#{storyId}`            | -                            | -                           |
 | Like        | `PL#{photoId}`              | `LIKE#{likingUsername}`      | `PL#{photoId}`               | `LIKE#{likeId}`             |
 | Comment     | `PC#{photoId}`              | `COMMENT#{commentId}`        | -                            | -                           |
 | Follow      | `FOLLOW#{followedUsername}` | `FOLLOW#{followingUsername}` | `FOLLOW#{followingUsername}` | `FOLLOW#{followedUsername}` |
@@ -61,6 +62,11 @@ A complete example of an Instagram clone with users, photos, likes, comments, an
    - Create photo: `PutItem` with PK=`UP#{username}`, SK=`PHOTO#{photoId}`
    - Get photo: `GetItem` with PK=`UP#{username}`, SK=`PHOTO#{photoId}`
    - List user photos: `Query` with PK=`UP#{username}`, SK `begins_with` "PHOTO#"
+
+3. **Stories**
+   - Create story: `PutItem` with PK=`UP#{username}`, SK=`STORY#{storyId}`
+   - Get story: `GetItem` with PK=`UP#{username}`, SK=`STORY#{storyId}`
+   - List user stories: `Query` with PK=`UP#{username}`, SK `begins_with` "STORY#"
 
 3. **Likes**
    - Like a photo: `TransactWrite` - Put Like + Update Photo.likesCount
@@ -82,7 +88,7 @@ A complete example of an Instagram clone with users, photos, likes, comments, an
 ## Schema Definition
 
 ```typescript
-import { Table } from 'dynatable';
+import { Table, type InferModelFromSchema, type ArrayItem } from '@ftschopp/dynatable-core';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 
 const InstagramSchema = {
@@ -97,8 +103,8 @@ const InstagramSchema = {
   models: {
     User: {
       key: {
-        pk: { type: String, value: 'USER#${username}' },
-        sk: { type: String, value: 'USER#${username}' },
+        PK: { type: String, value: 'USER#${username}' },
+        SK: { type: String, value: 'USER#${username}' },
       },
       attributes: {
         username: { type: String, required: true },
@@ -110,8 +116,8 @@ const InstagramSchema = {
 
     Photo: {
       key: {
-        pk: { type: String, value: 'UP#${username}' },
-        sk: { type: String, value: 'PHOTO#${photoId}' },
+        PK: { type: String, value: 'UP#${username}' },
+        SK: { type: String, value: 'PHOTO#${photoId}' },
       },
       attributes: {
         username: { type: String, required: true },
@@ -120,6 +126,42 @@ const InstagramSchema = {
         caption: { type: String },
         likesCount: { type: Number, default: 0 },
         commentCount: { type: Number, default: 0 },
+      },
+    },
+
+    // Stories — demonstrates nested Object schema and typed Array items
+    Story: {
+      key: {
+        PK: { type: String, value: 'UP#${username}' },
+        SK: { type: String, value: 'STORY#${storyId}' },
+      },
+      attributes: {
+        username: { type: String, required: true },
+        storyId: { type: String, generate: 'ulid' },
+        viewCount: { type: Number, default: 0 },
+        // Typed array of frame objects
+        frames: {
+          type: Array,
+          default: [],
+          items: {
+            type: Object,
+            schema: {
+              url: { type: String, required: true },
+              duration: { type: Number },
+              mediaType: { type: String },
+            },
+          },
+        },
+        // Typed nested object
+        location: {
+          type: Object,
+          schema: {
+            city: { type: String },
+            country: { type: String },
+            lat: { type: Number },
+            lng: { type: Number },
+          },
+        },
       },
     },
 
@@ -179,6 +221,13 @@ export const table = new Table({
   client: new DynamoDBClient({ region: 'us-east-1' }),
   schema: InstagramSchema,
 });
+
+// Entity types inferred from the schema
+type StoryEntity = InferModelFromSchema<typeof InstagramSchema, 'Story'>;
+
+// Extract the frame item type using ArrayItem
+type StoryFrame = ArrayItem<StoryEntity['frames']>;
+// → { url: string; duration?: number; mediaType?: string }
 ```
 
 ## User Operations
@@ -689,6 +738,57 @@ const following = await isFollowing('alice', 'juanca');
 console.log(following ? 'Following' : 'Not following');
 ```
 
+## Story Operations
+
+### Create a Story
+
+```typescript
+async function createStory(username: string, frames: StoryFrame[], city?: string) {
+  return await table.entities.Story.put({
+    username,
+    frames,
+    ...(city ? { location: { city } } : {}),
+  }).execute();
+}
+
+// Usage
+const story = await createStory('juanca', [
+  { url: 'https://cdn.example.com/clip1.mp4', duration: 5, mediaType: 'video' },
+  { url: 'https://cdn.example.com/img1.jpg', duration: 3, mediaType: 'image' },
+]);
+
+console.log(story.storyId); // Auto-generated ULID
+console.log(story.frames[0].url); // Fully typed
+```
+
+### List User Stories
+
+```typescript
+async function getUserStories(username: string) {
+  return await table.entities.Story.query()
+    .where((attr, op) => op.eq(attr.username, username))
+    .scanIndexForward(false) // Most recent first
+    .execute();
+}
+
+// Usage
+const stories = await getUserStories('juanca');
+stories.forEach((story) => {
+  console.log(`Story ${story.storyId}: ${story.frames.length} frame(s)`);
+});
+```
+
+### Increment View Count
+
+```typescript
+async function incrementStoryViews(username: string, storyId: string) {
+  return await table.entities.Story.update({ username, storyId })
+    .add('viewCount', 1)
+    .returning('ALL_NEW')
+    .execute();
+}
+```
+
 ## Complete Workflows
 
 ### User Feed (Photos from Followed Users)
@@ -969,6 +1069,9 @@ This example demonstrates:
 - ✅ **Type Safety** - TypeScript end-to-end
 - ✅ **Conditions** - ifNotExists, where conditions
 - ✅ **Atomic Counters** - followerCount, likesCount, commentCount
+- ✅ **Nested Objects** - Typed `location` object with `schema`
+- ✅ **Typed Arrays** - `frames` array with typed item schema
+- ✅ **ArrayItem utility** - Extract frame item type with `ArrayItem<T>`
 
 ## Single Table Design Benefits
 
@@ -982,7 +1085,7 @@ This example demonstrates:
 
 To enhance this example, consider:
 
-- Implement Stories (temporary content)
+- Add story expiration (TTL attribute)
 - Add Direct Messages between users
 - Implement hashtags for photos
 - Add notifications

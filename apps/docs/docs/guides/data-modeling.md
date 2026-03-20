@@ -213,57 +213,86 @@ const groupUsers = await table.entities.UserGroup.query()
 
 ### Arrays
 
-Store lists of simple values:
+Store typed lists with the `items` field. When `items` is provided TypeScript infers the full element type.
 
 ```typescript
 Post: {
   attributes: {
     title: { type: String, required: true },
-    tags: { type: Array },           // Array of any type
-    categories: { type: Array },     // ["tech", "programming"]
-    views: { type: Array },          // [100, 200, 150]
+    // Typed array of strings
+    tags: {
+      type: Array,
+      default: [],
+      items: { type: String },
+    },
+    // Typed array of objects
+    attachments: {
+      type: Array,
+      default: [],
+      items: {
+        type: Object,
+        schema: {
+          url: { type: String, required: true },
+          name: { type: String },
+          size: { type: Number },
+        },
+      },
+    },
   },
 }
 
 // Usage
 await table.entities.Post.put({
   title: "My Post",
-  tags: ["javascript", "typescript", "react"],
-  categories: ["programming", "tutorial"],
+  tags: ["javascript", "typescript"],
+  attachments: [
+    { url: "https://example.com/file.pdf", name: "report.pdf", size: 12400 },
+  ],
 }).execute();
+```
+
+Use `ArrayItem<T>` to extract the inferred element type:
+
+```typescript
+import type { InferModelFromSchema, ArrayItem } from '@ftschopp/dynatable-core';
+
+type PostEntity = InferModelFromSchema<typeof schema, 'Post'>;
+type Attachment = ArrayItem<PostEntity['attachments']>;
+// → { url: string; name?: string; size?: number }
 ```
 
 ### Objects
 
-Store complex nested data:
+Use `schema` to add a typed nested object. Omit it for a free-form map:
 
 ```typescript
 User: {
   attributes: {
     username: { type: String, required: true },
+    // Free-form object (no type inference on fields)
     metadata: { type: Object },
-    settings: { type: Object },
-    address: { type: Object },
+    // Typed nested object
+    address: {
+      type: Object,
+      schema: {
+        street: { type: String },
+        city: { type: String, required: true },
+        country: { type: String, required: true },
+        zipCode: { type: String },
+      },
+    },
   },
 }
 
 // Usage
 await table.entities.User.put({
   username: "alice",
-  metadata: {
-    lastLogin: new Date(),
-    loginCount: 42,
-    preferences: {
-      theme: "dark",
-      language: "en"
-    }
-  },
+  metadata: { lastLogin: new Date(), loginCount: 42 }, // any shape
   address: {
     street: "123 Main St",
     city: "New York",
     country: "USA",
-    zipCode: "10001"
-  }
+  },
 }).execute();
 ```
 

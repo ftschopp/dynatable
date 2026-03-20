@@ -1,6 +1,11 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
-import { Table, createDynamoDBLogger } from '@ftschopp/dynatable-core';
+import {
+  Table,
+  createDynamoDBLogger,
+  InferModelFromSchema,
+  ArrayItem,
+} from '@ftschopp/dynatable-core';
 
 // ========================================
 // Configure DynamoDB Logger
@@ -106,12 +111,62 @@ const InstagramSchema = {
         followingUsername: { type: String, required: true },
       },
     },
+
+    // -----------------------------------------------------------------------
+    // Story: demonstrates nested Object and Array schema support
+    //
+    //  frames   → Array of objects (each frame has url, duration, mediaType)
+    //  location → Nested object (city, country, lat, lng)
+    // -----------------------------------------------------------------------
+    Story: {
+      key: {
+        PK: { type: String, value: 'UP#${username}' },
+        SK: { type: String, value: 'STORY#${storyId}' },
+      },
+      attributes: {
+        username: { type: String, required: true },
+        storyId: { type: String, generate: 'ulid' },
+        viewCount: { type: Number, default: 0 },
+        // Array of objects — each slide/frame in the story
+        frames: {
+          type: Array,
+          default: [],
+          items: {
+            type: Object,
+            schema: {
+              url: { type: String, required: true },
+              duration: { type: Number }, // seconds, default handled at app layer
+              mediaType: { type: String }, // 'image' | 'video'
+            },
+          },
+        },
+        // Nested object — where the story was posted from
+        location: {
+          type: Object,
+          schema: {
+            city: { type: String },
+            country: { type: String },
+            lat: { type: Number },
+            lng: { type: Number },
+          },
+        },
+      },
+    },
   },
   params: {
     isoDates: true,
     timestamps: true,
   },
 } as const;
+
+// -----------------------------------------------------------------------
+// Inferred types from the schema
+// -----------------------------------------------------------------------
+type StoryEntity = InferModelFromSchema<typeof InstagramSchema, 'Story'>;
+
+// Extract the item type of the frames array directly from the schema
+type StoryFrame = ArrayItem<StoryEntity['frames']>;
+// → { url: string; duration?: number; mediaType?: string }
 
 // Configuration for DynamoDB Local
 const ddbClient = new DynamoDBClient({
@@ -469,6 +524,68 @@ async function runExamples() {
       .where((attr, op) => op.and(op.eq(attr.username, 'johndoe'), op.gte(attr.likesCount, 1)))
       .execute();
     console.log(`✅ Found ${popularPhotos.length} popular photos (likes >= 1)`);
+
+    // ========================================
+    // 19. NESTED OBJECT & ARRAY — Stories
+    // ========================================
+    console.log('\n📖 19. Stories — nested Object & Array examples...');
+
+    // PUT: story with frames (Array of objects) and location (nested Object)
+    // StoryFrame type is inferred from the schema: { url: string; duration?: number; mediaType?: string }
+    const frames: StoryFrame[] = [
+      { url: 'https://cdn.example.com/s1f1.jpg', duration: 5, mediaType: 'image' },
+      { url: 'https://cdn.example.com/s1f2.mp4', duration: 10, mediaType: 'video' },
+    ];
+
+    const story1 = await table.entities.Story.put({
+      username: 'johndoe',
+      frames,
+      location: { city: 'Buenos Aires', country: 'AR', lat: -34.6, lng: -58.38 },
+    }).execute();
+
+    console.log('✅ Created story with frames and location:');
+    console.log('   storyId:', story1.storyId); // auto-generated ULID
+    console.log('   frames:', story1.frames);
+    console.log('   location:', story1.location);
+
+    // PUT: story with only frames, no location
+    const story2 = await table.entities.Story.put({
+      username: 'janedoe',
+      frames: [{ url: 'https://cdn.example.com/s2f1.jpg', mediaType: 'image' }],
+    }).execute();
+
+    console.log('✅ Created story (no location):', story2.storyId);
+    console.log('   frames count:', story2.frames?.length);
+    console.log('   location:', story2.location); // undefined — optional field
+
+    // GET: retrieve the story and access nested fields
+    const fetchedStory = await table.entities.Story.get({
+      username: 'johndoe',
+      storyId: story1.storyId,
+    }).execute();
+
+    console.log('✅ Fetched story — first frame url:', fetchedStory?.frames?.[0]?.url);
+    console.log('   location.city:', fetchedStory?.location?.city);
+
+    // UPDATE: increment view count while keeping nested fields intact
+    const updatedStory = await table.entities.Story.update({
+      username: 'johndoe',
+      storyId: story1.storyId,
+    })
+      .add('viewCount', 1)
+      .execute();
+
+    console.log('✅ Updated story viewCount:', updatedStory?.viewCount);
+
+    // QUERY: list all stories for a user (same PK pattern as Photos)
+    const johnsStories = await table.entities.Story.query()
+      .where((attr, op) => op.eq(attr.username, 'johndoe'))
+      .execute();
+
+    console.log(`✅ Found ${johnsStories.length} stories for johndoe`);
+    johnsStories.forEach((s, i) => {
+      console.log(`   Story ${i + 1}: ${s.frames?.length ?? 0} frames, viewCount: ${s.viewCount}`);
+    });
 
     console.log('\n✨ All CRUD examples completed successfully!\n');
 
