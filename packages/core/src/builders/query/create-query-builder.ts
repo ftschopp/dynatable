@@ -27,10 +27,20 @@ type QueryState<Model> = {
 };
 
 /**
- * Determines if a field is a key field (used in pk/sk templates)
+ * Determines if a field is a key field (used in pk/sk or index key templates)
  */
-function isKeyField(fieldName: string, model?: ModelDefinition): boolean {
+function isKeyField(fieldName: string, model?: ModelDefinition, indexName?: string): boolean {
   if (!model?.key) return false;
+
+  // When an index is specified, also check model.index for key templates
+  if (indexName && model.index) {
+    for (const [, keyDef] of Object.entries(model.index)) {
+      const templateVars = extractTemplateVars(keyDef.value);
+      if (templateVars.includes(fieldName)) {
+        return true;
+      }
+    }
+  }
 
   const keyEntries = Object.entries(model.key);
   for (const [, keyDef] of keyEntries) {
@@ -48,14 +58,25 @@ function isKeyField(fieldName: string, model?: ModelDefinition): boolean {
  */
 function getKeyNameForAttribute(
   fieldName: string,
-  model?: ModelDefinition
+  model?: ModelDefinition,
+  indexName?: string
 ): { keyName: string; template: string } | null {
   if (!model?.key) return null;
+
+  // When an index is specified, check model.index first for key templates
+  if (indexName && model.index) {
+    for (const [keyName, keyDef] of Object.entries(model.index)) {
+      const templateVars = extractTemplateVars(keyDef.value);
+      if (templateVars.includes(fieldName)) {
+        return { keyName, template: keyDef.value };
+      }
+    }
+  }
 
   for (const [keyName, keyDef] of Object.entries(model.key)) {
     const templateVars = extractTemplateVars(keyDef.value);
     if (templateVars.includes(fieldName)) {
-      return { keyName, template: keyDef.value }; // Returns "PK" and "UP#${username}"
+      return { keyName, template: keyDef.value };
     }
   }
   return null;
@@ -75,7 +96,8 @@ function applyKeyTemplate(template: string, fieldName: string, fieldValue: any):
  */
 function separateConditions(
   condition: Condition,
-  model?: ModelDefinition
+  model?: ModelDefinition,
+  indexName?: string
 ): { keyConditions: Condition[]; filterConditions: Condition[] } {
   const keyConditions: Condition[] = [];
   const filterConditions: Condition[] = [];
@@ -106,7 +128,7 @@ function separateConditions(
     const fieldMatch = cond.expression.match(/#(\w+)/);
     if (fieldMatch && fieldMatch[1]) {
       const fieldName = fieldMatch[1];
-      const keyInfo = getKeyNameForAttribute(fieldName, model);
+      const keyInfo = getKeyNameForAttribute(fieldName, model, indexName);
 
       if (keyInfo) {
         // This is a key field - rewrite the condition to use the actual key name
@@ -231,7 +253,7 @@ function createQueryExecutor<Model>(state: QueryState<Model>): QueryExecutor<Mod
       }
 
       // Separate key conditions from filter conditions
-      const { keyConditions, filterConditions } = separateConditions(state.condition, state.model);
+      const { keyConditions, filterConditions } = separateConditions(state.condition, state.model, state.indexName);
 
       // Build KeyConditionExpression (simple AND)
       const keyExpr = buildSimpleAndExpression(keyConditions);

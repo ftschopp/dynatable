@@ -363,6 +363,24 @@ Consistent reads:
 
 ### Query with GSI
 
+When your model defines index key templates, you can query a GSI using your model's attribute names directly. Dynatable automatically maps the attribute to the correct GSI key and applies the key template:
+
+```typescript
+// Model definition:
+// index: {
+//   GSI1PK: { type: String, value: 'EMAIL#${email}' },
+//   GSI1SK: { type: String, value: 'EMAIL#${email}' },
+// }
+
+// ✅ Use attribute names — Dynatable resolves them to GSI keys automatically
+const user = await table.entities.User.query()
+  .where((attr, op) => op.eq(attr.email, 'alice@example.com'))
+  .useIndex('GSI1')
+  .execute();
+```
+
+You can also use raw GSI key names with pre-formatted values if you prefer:
+
 ```typescript
 const publishedPosts = await table.entities.Post.query()
   .where((attr, op) =>
@@ -551,9 +569,9 @@ const charlie = await table.entities.User.get({
 ### 5. Design Proper Indexes
 
 ```typescript
-// ✅ Query uses index
+// ✅ Query uses index with attribute name — key template applied automatically
 const posts = await table.entities.Post.query()
-  .where((attr, op) => op.eq(attr.gsi1pk, 'STATUS#published'))
+  .where((attr, op) => op.eq(attr.status, 'published'))
   .useIndex('gsi1')
   .execute();
 

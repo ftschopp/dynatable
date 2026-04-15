@@ -228,3 +228,73 @@ describe('QueryBuilder - Pagination', () => {
     });
   });
 });
+
+describe('QueryBuilder - GSI key recognition', () => {
+  const client = new DynamoDBClient({});
+  const tableName = 'TestTable';
+
+  interface UserModel {
+    id: string;
+    email: string;
+    name?: string;
+  }
+
+  const modelWithIndex: ModelDefinition = {
+    key: {
+      PK: { type: String, value: 'USER#${id}' },
+      SK: { type: String, value: 'USER#${id}' },
+    },
+    index: {
+      GSI1PK: { type: String, value: 'EMAIL#${email}' },
+      GSI1SK: { type: String, value: 'EMAIL#${email}' },
+    },
+    attributes: {
+      id: { type: String, required: true },
+      email: { type: String, required: true },
+      name: { type: String },
+    },
+  };
+
+  test('should place GSI index attribute into KeyConditionExpression when useIndex is set', () => {
+    const params = createQueryBuilder<UserModel>(tableName, client, modelWithIndex)
+      .where((attr, op) => op.eq(attr.email, 'alice@example.com'))
+      .useIndex('GSI1')
+      .dbParams();
+
+    // email should be recognized as a key field via model.index and placed in KeyConditionExpression
+    expect(params.KeyConditionExpression).toBeDefined();
+    expect(params.KeyConditionExpression).toContain('#GSI1PK');
+    expect(params.ExpressionAttributeValues).toBeDefined();
+    // The value should have the template applied
+    expect(Object.values(params.ExpressionAttributeValues!)).toContain('EMAIL#alice@example.com');
+    // It should NOT be in FilterExpression
+    expect(params.FilterExpression).toBeUndefined();
+    expect(params.IndexName).toBe('GSI1');
+  });
+
+  test('should place GSI attribute into FilterExpression when NO index is specified', () => {
+    const params = createQueryBuilder<UserModel>(tableName, client, modelWithIndex)
+      .where((attr, op) => op.and(op.eq(attr.id, '123'), op.eq(attr.email, 'alice@example.com')))
+      .dbParams();
+
+    // id maps to PK -> KeyConditionExpression
+    expect(params.KeyConditionExpression).toBeDefined();
+    expect(params.KeyConditionExpression).toContain('#PK');
+    // email is NOT a primary key field, so without useIndex it goes to filter
+    expect(params.FilterExpression).toBeDefined();
+    expect(params.FilterExpression).toContain('#email');
+  });
+
+  test('should handle both primary key and GSI key fields together with useIndex', () => {
+    const params = createQueryBuilder<UserModel>(tableName, client, modelWithIndex)
+      .where((attr, op) => op.and(op.eq(attr.email, 'alice@example.com'), op.eq(attr.id, '123')))
+      .useIndex('GSI1')
+      .dbParams();
+
+    // Both should be key conditions: email via index, id via primary key
+    expect(params.KeyConditionExpression).toBeDefined();
+    expect(params.KeyConditionExpression).toContain('#GSI1PK');
+    expect(params.KeyConditionExpression).toContain('#PK');
+    expect(params.FilterExpression).toBeUndefined();
+  });
+});
