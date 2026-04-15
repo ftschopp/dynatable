@@ -1,6 +1,6 @@
 # Dynatable
 
-A type-safe, functional programming library for AWS DynamoDB with Single Table Design support. Built with TypeScript and designed to make DynamoDB development elegant and productive.
+A type-safe, functional TypeScript library for AWS DynamoDB with first-class Single Table Design support. Designed to make DynamoDB development elegant, productive, and predictable.
 
 ## ✨ Features
 
