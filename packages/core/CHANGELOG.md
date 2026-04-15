@@ -5,6 +5,13 @@
 
 * resolve GSI key attributes to KeyConditionExpression when using useIndex ([8b2ee35](https://github.com/ftschopp/dynatable/commit/8b2ee35ca56bae9a32c8f1fec764365e8496674d))
 
+## @ftschopp/dynatable-core [1.2.1](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.2.0...@ftschopp/dynatable-core@1.2.1) (2026-04-15)
+
+
+### Bug Fixes
+
+* resolve GSI key attributes to KeyConditionExpression when using useIndex ([8b2ee35](https://github.com/ftschopp/dynatable/commit/8b2ee35ca56bae9a32c8f1fec764365e8496674d))
+
 # @ftschopp/dynatable-core [1.2.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.1.0...@ftschopp/dynatable-core@1.2.0) (2026-03-20)
 
 
