@@ -726,7 +726,9 @@ describe('Should test dbParams function builder', () => {
     const params = await table.entities.User.scan().dbParams();
 
     expect(params.TableName).toBe('InstagramClone');
-    expect(params.FilterExpression).toBeUndefined();
+    expect(params.FilterExpression).toBe('#_type = :_type');
+    expect(params.ExpressionAttributeNames).toMatchObject({ '#_type': '_type' });
+    expect(params.ExpressionAttributeValues).toMatchObject({ ':_type': 'User' });
   });
 
   test('SCAN Users with filter', async () => {
@@ -736,10 +738,12 @@ describe('Should test dbParams function builder', () => {
 
     expect(params.TableName).toBe('InstagramClone');
     expect(params.FilterExpression).toMatch(/#followerCount > :followerCount_\d+/);
-    expect(params.ExpressionAttributeNames).toEqual({
+    expect(params.ExpressionAttributeNames).toMatchObject({
       '#followerCount': 'followerCount',
+      '#_type': '_type',
     });
     expect(Object.values(params.ExpressionAttributeValues || {})).toContain(100);
+    expect(Object.values(params.ExpressionAttributeValues || {})).toContain('User');
   });
 
   test('SCAN Users with multiple filters', async () => {
@@ -751,9 +755,10 @@ describe('Should test dbParams function builder', () => {
     expect(params.FilterExpression).toMatch(
       /\(#followerCount > :followerCount_\d+\) AND \(#followingCount > :followingCount_\d+\)/
     );
-    expect(params.ExpressionAttributeNames).toEqual({
+    expect(params.ExpressionAttributeNames).toMatchObject({
       '#followerCount': 'followerCount',
       '#followingCount': 'followingCount',
+      '#_type': '_type',
     });
   });
 
@@ -763,6 +768,8 @@ describe('Should test dbParams function builder', () => {
       .dbParams();
 
     expect(params.ProjectionExpression).toBe('username, photoId, likesCount');
+    expect(params.FilterExpression).toBe('#_type = :_type');
+    expect(params.ExpressionAttributeValues).toMatchObject({ ':_type': 'Photo' });
   });
 
   test('SCAN Photos with limit', async () => {
@@ -773,6 +780,8 @@ describe('Should test dbParams function builder', () => {
 
     expect(params.Limit).toBe(10);
     expect(params.FilterExpression).toMatch(/#likesCount > :likesCount_\d+/);
+    expect(params.FilterExpression).toMatch(/#_type = :_type/);
+    expect(params.ExpressionAttributeValues).toMatchObject({ ':_type': 'Photo' });
   });
 
   test('SCAN with IN operator', async () => {
@@ -781,9 +790,11 @@ describe('Should test dbParams function builder', () => {
       .dbParams();
 
     expect(params.FilterExpression).toContain('IN');
+    expect(params.FilterExpression).toMatch(/#_type = :_type/);
     expect(Object.values(params.ExpressionAttributeValues || {})).toContain('alice');
     expect(Object.values(params.ExpressionAttributeValues || {})).toContain('bob');
     expect(Object.values(params.ExpressionAttributeValues || {})).toContain('charlie');
+    expect(Object.values(params.ExpressionAttributeValues || {})).toContain('User');
   });
 
   test('SCAN with size operator', async () => {
@@ -792,7 +803,9 @@ describe('Should test dbParams function builder', () => {
       .dbParams();
 
     expect(params.FilterExpression).toMatch(/size\(#name\) > :name_size_\d+/);
+    expect(params.FilterExpression).toMatch(/#_type = :_type/);
     expect(Object.values(params.ExpressionAttributeValues || {})).toContain(5);
+    expect(Object.values(params.ExpressionAttributeValues || {})).toContain('User');
   });
 
   test('SCAN Comments with complex filter', async () => {
@@ -804,6 +817,8 @@ describe('Should test dbParams function builder', () => {
 
     expect(params.FilterExpression).toMatch(/attribute_exists\(#content\)/);
     expect(params.FilterExpression).toMatch(/size\(#content\) > :content_size_\d+/);
+    expect(params.FilterExpression).toMatch(/#_type = :_type/);
+    expect(params.ExpressionAttributeValues).toMatchObject({ ':_type': 'Comment' });
     expect(params.ProjectionExpression).toBe('photoId, commentId, content');
     expect(params.Limit).toBe(50);
   });

@@ -18,6 +18,7 @@ import { EntityAPI, EntityAPIOptions } from './types';
 import { withMiddleware } from './middleware/with-middleware';
 import { createCleanKeysMiddleware } from './middleware/factories';
 import { validateKeyFields } from './validation/key-validation';
+import { Condition } from '@/builders/shared/types';
 
 /**
  * Creates an entity API instance with validation, key resolution, and builder creation.
@@ -90,10 +91,17 @@ export const createEntityAPI = <Model extends ModelDefinition>(
     },
 
     scan() {
+      // Auto-filter by entity type so scan only returns items for this entity
+      const typeFilter: Condition = {
+        expression: '#_type = :_type',
+        names: { '#_type': '_type' },
+        values: { ':_type': modelName },
+      };
+
       const builder = createScanBuilder<InferModel<Model>>(
         tableName,
         client,
-        [],
+        [typeFilter],
         [],
         undefined,
         false,
