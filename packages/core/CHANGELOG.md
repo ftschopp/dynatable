@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-core [1.2.2](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.2.1...@ftschopp/dynatable-core@1.2.2) (2026-04-15)
+
+
+### Bug Fixes
+
+* add filter type scan entity ([dddff15](https://github.com/ftschopp/dynatable/commit/dddff15228f84fd11b0c6d2daa6f5cc8d77c641d))
+
 ## @ftschopp/dynatable-core [1.2.1](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.2.0...@ftschopp/dynatable-core@1.2.1) (2026-04-15)
 
 
