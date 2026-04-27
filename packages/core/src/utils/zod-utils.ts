@@ -38,7 +38,8 @@ export const typeToZod = (attr: AttributeDefinition): ZodType => {
               : z.unknown();
   }
 
-  return attr.required ? zodType : zodType.optional();
+  const isGenerated = 'generate' in attr;
+  return attr.required && !isGenerated ? zodType : zodType.optional();
 };
 
 /**

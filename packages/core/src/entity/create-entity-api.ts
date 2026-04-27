@@ -71,8 +71,8 @@ export const createEntityAPI = <Model extends ModelDefinition>(
         timestamps,
       });
 
-      // Resolve keys again with defaults
-      const fullKey = resolveKeys(model, withDefaults);
+      // Resolve keys again with defaults (including GSI index keys)
+      const fullKey = resolveKeys(model, withDefaults, 'both');
 
       // Combine keys and data into full item, adding _type field
       const fullItem = {
@@ -194,8 +194,8 @@ export const createEntityAPI = <Model extends ModelDefinition>(
           timestamps,
         });
 
-        // Resolve keys again with defaults
-        const fullKey = resolveKeys(model, withDefaults);
+        // Resolve keys again with defaults (including GSI index keys)
+        const fullKey = resolveKeys(model, withDefaults, 'both');
 
         // Combine keys and data into full item, adding _type field
         return {
