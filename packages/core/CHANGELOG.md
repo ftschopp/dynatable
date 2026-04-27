@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-core [1.2.3](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.2.2...@ftschopp/dynatable-core@1.2.3) (2026-04-27)
+
+
+### Bug Fixes
+
+* resolve both required and optional keys in generate fields ([2c06b43](https://github.com/ftschopp/dynatable/commit/2c06b435d4578cb28f773798c80c19bf4eb9ef28))
+
 ## @ftschopp/dynatable-core [1.2.2](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.2.1...@ftschopp/dynatable-core@1.2.2) (2026-04-15)
 
 
