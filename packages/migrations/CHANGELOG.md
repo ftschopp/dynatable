@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-migrations [1.2.1](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.2.0...@ftschopp/dynatable-migrations@1.2.1) (2026-04-29)
+
+
+### Bug Fixes
+
+* get keyname for attribute index ([5bd47c3](https://github.com/ftschopp/dynatable/commit/5bd47c38585c78153ff51f5e457777e928d6e667))
+
 # @ftschopp/dynatable-migrations [1.2.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.1.0...@ftschopp/dynatable-migrations@1.2.0) (2026-03-06)
 
 
