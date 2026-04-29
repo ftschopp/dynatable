@@ -161,9 +161,7 @@ export const migration: Migration = {
         );
       }
 
-      await client.send(
-        new TransactWriteCommand({ TransactItems: transactItems })
-      );
+      await client.send(new TransactWriteCommand({ TransactItems: transactItems }));
     }
   },
 
@@ -349,7 +347,7 @@ For large tables, add delays between batches:
 ```typescript
 for (const batch of batches) {
   await processBatch(batch);
-  await new Promise(resolve => setTimeout(resolve, 100)); // 100ms delay
+  await new Promise((resolve) => setTimeout(resolve, 100)); // 100ms delay
 }
 ```
 
@@ -362,6 +360,7 @@ Once a migration is applied, create a new migration for fixes instead of modifyi
 ### Lock Acquisition Failed
 
 If you see "Could not acquire migration lock":
+
 - Another migration may be running
 - Wait a few minutes (lock expires after 5 minutes)
 - Check for stuck processes

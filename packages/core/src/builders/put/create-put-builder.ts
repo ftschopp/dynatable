@@ -57,7 +57,16 @@ export function createPutBuilder<Model>(
     },
 
     ifNotExists() {
-      return createPutBuilder(tableName, item, client, conditions, true, returnMode, enableTimestamps, logger);
+      return createPutBuilder(
+        tableName,
+        item,
+        client,
+        conditions,
+        true,
+        returnMode,
+        enableTimestamps,
+        logger
+      );
     },
 
     returning(mode) {

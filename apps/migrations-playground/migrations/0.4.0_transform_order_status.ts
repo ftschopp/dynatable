@@ -69,9 +69,7 @@ export const migration: Migration = {
         })
       );
 
-      console.log(
-        `[0.4.0] Transformed order ${order.orderId}: "${oldStatus}" -> statusInfo`
-      );
+      console.log(`[0.4.0] Transformed order ${order.orderId}: "${oldStatus}" -> statusInfo`);
     }
 
     console.log(`[0.4.0] Successfully transformed ${orders.length} orders`);

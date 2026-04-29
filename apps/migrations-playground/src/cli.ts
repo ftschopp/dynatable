@@ -202,11 +202,7 @@ async function handleAction(action: MenuAction): Promise<boolean> {
       case 'open-admin':
         const platform = process.platform;
         const openCmd =
-          platform === 'darwin'
-            ? 'open'
-            : platform === 'win32'
-              ? 'start'
-              : 'xdg-open';
+          platform === 'darwin' ? 'open' : platform === 'win32' ? 'start' : 'xdg-open';
         try {
           execSync(`${openCmd} http://localhost:8101`, { stdio: 'ignore' });
           console.log('\nOpened http://localhost:8101 in browser');

@@ -149,9 +149,7 @@ export class MigrationRunner {
     if (!dryRun) {
       const lockAcquired = await this.tracker.acquireLock();
       if (!lockAcquired) {
-        throw new Error(
-          'Could not acquire migration lock. Another migration may be in progress.'
-        );
+        throw new Error('Could not acquire migration lock. Another migration may be in progress.');
       }
     }
 

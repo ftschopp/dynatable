@@ -91,9 +91,7 @@ export class MigrationLoader {
         const fileUrl = `file://${absolutePath}`;
         module = await import(fileUrl);
       } catch (error: any) {
-        throw new Error(
-          `Failed to load JavaScript migration ${filePath}: ${error.message}`
-        );
+        throw new Error(`Failed to load JavaScript migration ${filePath}: ${error.message}`);
       }
     }
 

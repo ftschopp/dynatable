@@ -68,9 +68,7 @@ export const migration: Migration = {
         })
       );
 
-      console.log(
-        `[0.3.0] Updated product: ${product.name} (SKU: ${sku}, lowStock: ${lowStock})`
-      );
+      console.log(`[0.3.0] Updated product: ${product.name} (SKU: ${sku}, lowStock: ${lowStock})`);
     }
 
     console.log(`[0.3.0] Successfully updated ${products.length} products`);

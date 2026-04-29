@@ -55,8 +55,8 @@ const FeatureList: FeatureItem[] = [
     icon: '✨',
     description: (
       <>
-        Define your schema once, get typed CRUD operations automatically. No decorators, no
-        classes, just plain TypeScript objects.
+        Define your schema once, get typed CRUD operations automatically. No decorators, no classes,
+        just plain TypeScript objects.
       </>
     ),
   },
@@ -65,8 +65,8 @@ const FeatureList: FeatureItem[] = [
     icon: '🚀',
     description: (
       <>
-        Built on top of AWS SDK v3. Supports transactions, batch operations, conditional writes,
-        and all DynamoDB features you need.
+        Built on top of AWS SDK v3. Supports transactions, batch operations, conditional writes, and
+        all DynamoDB features you need.
       </>
     ),
   },

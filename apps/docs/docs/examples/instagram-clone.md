@@ -68,18 +68,18 @@ A complete example of an Instagram clone with users, photos, likes, comments, an
    - Get story: `GetItem` with PK=`UP#{username}`, SK=`STORY#{storyId}`
    - List user stories: `Query` with PK=`UP#{username}`, SK `begins_with` "STORY#"
 
-3. **Likes**
+4. **Likes**
    - Like a photo: `TransactWrite` - Put Like + Update Photo.likesCount
    - Unlike photo: `TransactWrite` - Delete Like + Update Photo.likesCount
    - List likes (chronological): Query GSI1 with GSI1PK=`PL#{photoId}`
    - Check if user liked: `GetItem` with PK=`PL#{photoId}`, SK=`LIKE#{username}`
 
-4. **Comments**
+5. **Comments**
    - Comment on photo: `TransactWrite` - Put Comment + Update Photo.commentCount
    - List comments: `Query` with PK=`PC#{photoId}`, SK `begins_with` "COMMENT#"
    - Delete comment: `TransactWrite` - Delete Comment + Update Photo.commentCount
 
-5. **Follow**
+6. **Follow**
    - Follow user: `TransactWrite` - Put Follow + Update followerCount + Update followingCount
    - Unfollow user: `TransactWrite` - Delete Follow + Update followerCount + Update followingCount
    - List followers: `Query` with PK=`FOLLOW#{username}`, then `BatchGetItem` for user details

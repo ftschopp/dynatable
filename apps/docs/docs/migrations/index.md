@@ -12,6 +12,7 @@ DynamoDB migration tool for single table design with schema versioning.
 In traditional SQL databases, schema changes require `ALTER TABLE` statements. DynamoDB is schemaless, but your application still has an implicit schema - the structure of your data.
 
 When you need to:
+
 - Add new fields to existing items
 - Transform data formats
 - Change key structures

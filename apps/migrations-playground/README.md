@@ -17,16 +17,16 @@ yarn start
 
 ## Available Commands
 
-| Command | Description |
-|---------|-------------|
-| `yarn docker:up` | Start DynamoDB Local + Admin UI |
-| `yarn docker:down` | Stop containers |
-| `yarn docker:reset` | Reset everything (delete data) |
-| `yarn setup` | Create the DynamoDB table |
-| `yarn start` | Run interactive CLI |
-| `yarn migrate:status` | Show migration status |
-| `yarn migrate:up` | Run pending migrations |
-| `yarn migrate:down` | Rollback last migration |
+| Command               | Description                     |
+| --------------------- | ------------------------------- |
+| `yarn docker:up`      | Start DynamoDB Local + Admin UI |
+| `yarn docker:down`    | Stop containers                 |
+| `yarn docker:reset`   | Reset everything (delete data)  |
+| `yarn setup`          | Create the DynamoDB table       |
+| `yarn start`          | Run interactive CLI             |
+| `yarn migrate:status` | Show migration status           |
+| `yarn migrate:up`     | Run pending migrations          |
+| `yarn migrate:down`   | Rollback last migration         |
 
 ## CLI Features
 
@@ -45,17 +45,18 @@ The interactive CLI provides:
 
 The playground includes 5 example migrations:
 
-| Version | Name | What it does |
-|---------|------|--------------|
-| 0.1.0 | initial_setup | Baseline schema documentation |
-| 0.2.0 | add_user_email | Adds `email` and `emailVerified` to Users |
-| 0.3.0 | add_product_metadata | Adds `sku`, `weight`, `dimensions`, `lowStock` to Products |
-| 0.4.0 | transform_order_status | Transforms `status` string to `statusInfo` object |
-| 1.0.0 | add_audit_fields | Adds `updatedAt` and `_version` to ALL entities |
+| Version | Name                   | What it does                                               |
+| ------- | ---------------------- | ---------------------------------------------------------- |
+| 0.1.0   | initial_setup          | Baseline schema documentation                              |
+| 0.2.0   | add_user_email         | Adds `email` and `emailVerified` to Users                  |
+| 0.3.0   | add_product_metadata   | Adds `sku`, `weight`, `dimensions`, `lowStock` to Products |
+| 0.4.0   | transform_order_status | Transforms `status` string to `statusInfo` object          |
+| 1.0.0   | add_audit_fields       | Adds `updatedAt` and `_version` to ALL entities            |
 
 ## Recommended Test Flow
 
 1. **Setup**
+
    ```bash
    yarn docker:up
    yarn setup

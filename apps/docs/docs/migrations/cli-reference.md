@@ -16,6 +16,7 @@ dynatable-migrate init
 ```
 
 Creates:
+
 - `migrations/` directory
 - `dynatable.config.js` configuration file
 
@@ -30,15 +31,16 @@ dynatable-migrate create <name> [options]
 ```
 
 **Arguments:**
+
 - `name` - Migration name (snake_case recommended)
 
 **Options:**
 
-| Option | Short | Description |
-|--------|-------|-------------|
-| `--config <path>` | `-c` | Custom config file path |
-| `--type <type>` | `-t` | Version bump: `major`, `minor`, or `patch` (default: patch) |
-| `--explicit <version>` | `-e` | Explicit semver version (e.g., 2.0.0) |
+| Option                 | Short | Description                                                 |
+| ---------------------- | ----- | ----------------------------------------------------------- |
+| `--config <path>`      | `-c`  | Custom config file path                                     |
+| `--type <type>`        | `-t`  | Version bump: `major`, `minor`, or `patch` (default: patch) |
+| `--explicit <version>` | `-e`  | Explicit semver version (e.g., 2.0.0)                       |
 
 **Examples:**
 
@@ -68,11 +70,11 @@ dynatable-migrate up [options]
 
 **Options:**
 
-| Option | Short | Description |
-|--------|-------|-------------|
-| `--config <path>` | `-c` | Custom config file path |
-| `--limit <number>` | `-l` | Limit number of migrations to run |
-| `--dry-run` | `-d` | Preview changes without applying |
+| Option             | Short | Description                       |
+| ------------------ | ----- | --------------------------------- |
+| `--config <path>`  | `-c`  | Custom config file path           |
+| `--limit <number>` | `-l`  | Limit number of migrations to run |
+| `--dry-run`        | `-d`  | Preview changes without applying  |
 
 **Examples:**
 
@@ -102,11 +104,11 @@ dynatable-migrate down [options]
 
 **Options:**
 
-| Option | Short | Description |
-|--------|-------|-------------|
-| `--config <path>` | `-c` | Custom config file path |
-| `--steps <number>` | `-s` | Number of migrations to rollback (default: 1) |
-| `--dry-run` | `-d` | Preview changes without applying |
+| Option             | Short | Description                                   |
+| ------------------ | ----- | --------------------------------------------- |
+| `--config <path>`  | `-c`  | Custom config file path                       |
+| `--steps <number>` | `-s`  | Number of migrations to rollback (default: 1) |
+| `--dry-run`        | `-d`  | Preview changes without applying              |
 
 **Examples:**
 
@@ -133,9 +135,9 @@ dynatable-migrate status [options]
 
 **Options:**
 
-| Option | Short | Description |
-|--------|-------|-------------|
-| `--config <path>` | `-c` | Custom config file path |
+| Option            | Short | Description             |
+| ----------------- | ----- | ----------------------- |
+| `--config <path>` | `-c`  | Custom config file path |
 
 **Example Output:**
 
@@ -160,22 +162,18 @@ Total: 3 migration(s)
 
 Migrations use semver for version numbers:
 
-| Bump Type | When to Use | Example |
-|-----------|-------------|---------|
-| **Major** | Breaking schema changes | 0.2.0 → 1.0.0 |
+| Bump Type | When to Use                    | Example       |
+| --------- | ------------------------------ | ------------- |
+| **Major** | Breaking schema changes        | 0.2.0 → 1.0.0 |
 | **Minor** | New features, new entity types | 0.1.0 → 0.2.0 |
-| **Patch** | Bug fixes, small adjustments | 0.1.0 → 0.1.1 |
+| **Patch** | Bug fixes, small adjustments   | 0.1.0 → 0.1.1 |
 
 ## Programmatic Usage
 
 You can also use the migration runner in code:
 
 ```typescript
-import {
-  MigrationRunner,
-  loadConfig,
-  createDynamoDBClient,
-} from '@ftschopp/dynatable-migrations';
+import { MigrationRunner, loadConfig, createDynamoDBClient } from '@ftschopp/dynatable-migrations';
 
 async function runMigrations() {
   const config = await loadConfig();

@@ -22,6 +22,7 @@ npx dynatable-migrate init
 ```
 
 This creates:
+
 - `migrations/` directory for your migration files
 - `dynatable.config.js` configuration file
 
@@ -60,15 +61,15 @@ module.exports = {
 
 ### Configuration Options
 
-| Option | Required | Default | Description |
-|--------|----------|---------|-------------|
-| `tableName` | Yes | - | Your DynamoDB table name |
-| `client.region` | Yes | - | AWS region |
-| `client.endpoint` | No | - | Custom endpoint (for local DynamoDB) |
-| `client.credentials` | No | - | AWS credentials (uses default chain if omitted) |
-| `migrationsDir` | No | `./migrations` | Directory for migration files |
-| `trackingPrefix` | No | `_SCHEMA#VERSION` | PK prefix for tracking records |
-| `gsi1Name` | No | `GSI1` | Name of your GSI for queries |
+| Option               | Required | Default           | Description                                     |
+| -------------------- | -------- | ----------------- | ----------------------------------------------- |
+| `tableName`          | Yes      | -                 | Your DynamoDB table name                        |
+| `client.region`      | Yes      | -                 | AWS region                                      |
+| `client.endpoint`    | No       | -                 | Custom endpoint (for local DynamoDB)            |
+| `client.credentials` | No       | -                 | AWS credentials (uses default chain if omitted) |
+| `migrationsDir`      | No       | `./migrations`    | Directory for migration files                   |
+| `trackingPrefix`     | No       | `_SCHEMA#VERSION` | PK prefix for tracking records                  |
+| `gsi1Name`           | No       | `GSI1`            | Name of your GSI for queries                    |
 
 ## Create Your First Migration
 
@@ -103,15 +104,16 @@ Every migration receives a context object:
 
 ```typescript
 interface MigrationContext {
-  client: DynamoDBDocumentClient;  // AWS SDK client
-  tableName: string;                // Your table name
-  tracker: MigrationTracker;        // Track schema changes
-  config: MigrationConfig;          // Your config
-  dynamodb: DynamoDBCommands;       // Pre-imported commands
+  client: DynamoDBDocumentClient; // AWS SDK client
+  tableName: string; // Your table name
+  tracker: MigrationTracker; // Track schema changes
+  config: MigrationConfig; // Your config
+  dynamodb: DynamoDBCommands; // Pre-imported commands
 }
 ```
 
 The `dynamodb` object includes all common commands:
+
 - `ScanCommand`, `QueryCommand`
 - `GetCommand`, `PutCommand`, `UpdateCommand`, `DeleteCommand`
 - `BatchGetCommand`, `BatchWriteCommand`

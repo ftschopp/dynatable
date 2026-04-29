@@ -666,11 +666,7 @@ If you see "Could not acquire migration lock":
 You can also use the migration runner in your code:
 
 ```typescript
-import {
-  MigrationRunner,
-  loadConfig,
-  createDynamoDBClient,
-} from '@ftschopp/dynatable-migrations';
+import { MigrationRunner, loadConfig, createDynamoDBClient } from '@ftschopp/dynatable-migrations';
 
 async function runMigrations() {
   const config = await loadConfig();

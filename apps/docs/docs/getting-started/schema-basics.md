@@ -466,7 +466,11 @@ user.createdAt; // Date
 Use `InferModelFromSchema` and `InferInputFromSchema` to extract typed entity interfaces:
 
 ```typescript
-import type { InferModelFromSchema, InferInputFromSchema, ArrayItem } from '@ftschopp/dynatable-core';
+import type {
+  InferModelFromSchema,
+  InferInputFromSchema,
+  ArrayItem,
+} from '@ftschopp/dynatable-core';
 
 type UserEntity = InferModelFromSchema<typeof BlogSchema, 'User'>;
 // createdAt / updatedAt are included automatically when params.timestamps = true

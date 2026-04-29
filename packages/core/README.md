@@ -84,9 +84,7 @@ async function example() {
   }).execute();
 
   // Update
-  await table.entities.User.update({ username: 'alice' })
-    .set('name', 'Alice Johnson')
-    .execute();
+  await table.entities.User.update({ username: 'alice' }).set('name', 'Alice Johnson').execute();
 
   // Query
   const users = await table.entities.User.query()
@@ -150,8 +148,8 @@ const schema = {
   },
 
   params: {
-    timestamps: true,      // Auto createdAt/updatedAt
-    isoDates: true,        // Use ISO 8601 dates
+    timestamps: true, // Auto createdAt/updatedAt
+    isoDates: true, // Use ISO 8601 dates
     cleanInternalKeys: false, // Hide PK/SK from results
   },
 } as const;
@@ -276,12 +274,7 @@ await table.entities.User.delete({ username: 'alice' })
 
 // QUERY - Query with conditions
 const photos = await table.entities.Photo.query()
-  .where((attr, op) =>
-    op.and(
-      op.eq(attr.username, 'alice'),
-      op.gt(attr.likesCount, 10)
-    )
-  )
+  .where((attr, op) => op.and(op.eq(attr.username, 'alice'), op.gt(attr.likesCount, 10)))
   .limit(20)
   .scanIndexForward(false)
   .execute();
@@ -312,7 +305,8 @@ Atomic operations across multiple items:
 
 ```typescript
 // TransactWrite - Atomic writes
-await table.transactWrite()
+await table
+  .transactWrite()
   .addPut(
     table.entities.Like.put({
       photoId: 'photo1',
@@ -321,15 +315,12 @@ await table.transactWrite()
       .ifNotExists()
       .dbParams()
   )
-  .addUpdate(
-    table.entities.Photo.update({ photoId: 'photo1' })
-      .add('likesCount', 1)
-      .dbParams()
-  )
+  .addUpdate(table.entities.Photo.update({ photoId: 'photo1' }).add('likesCount', 1).dbParams())
   .execute();
 
 // TransactGet - Atomic reads
-const result = await table.transactGet()
+const result = await table
+  .transactGet()
   .addGet(table.entities.User.get({ username: 'alice' }).dbParams())
   .addGet(table.entities.Photo.get({ photoId: 'photo1' }).dbParams())
   .execute();
@@ -342,6 +333,7 @@ const [user, photo] = result.items;
 Build complex conditions with type-safe operators:
 
 ### Comparison
+
 - `eq(attr, value)` - Equals
 - `ne(attr, value)` - Not equals
 - `lt(attr, value)` - Less than
@@ -351,19 +343,23 @@ Build complex conditions with type-safe operators:
 - `between(attr, low, high)` - Between values
 
 ### String
+
 - `beginsWith(attr, prefix)` - Begins with prefix
 - `contains(attr, value)` - Contains value (strings, sets, lists)
 
 ### Existence
+
 - `exists(attr)` - Attribute exists
 - `notExists(attr)` - Attribute doesn't exist
 
 ### Advanced
+
 - `attributeType(attr, type)` - Check attribute type ('S', 'N', 'M', 'L', etc.)
 - `in(attr, values[])` - Value in array
 - `size(attr)` - Get size, returns object with `.eq()`, `.gt()`, etc.
 
 ### Logical
+
 - `and(...conditions)` - Combine with AND
 - `or(...conditions)` - Combine with OR
 - `not(condition)` - Negate condition
@@ -379,12 +375,7 @@ await table.entities.User.update({ username: 'alice' })
 
 // Contains
 const users = await table.entities.User.query()
-  .where((attr, op) =>
-    op.and(
-      op.eq(attr.username, 'alice'),
-      op.contains(attr.tags, 'premium')
-    )
-  )
+  .where((attr, op) => op.and(op.eq(attr.username, 'alice'), op.contains(attr.tags, 'premium')))
   .execute();
 
 // IN operator
@@ -394,12 +385,7 @@ const activeUsers = await table.entities.User.scan()
 
 // Size function
 const posts = await table.entities.Post.query()
-  .where((attr, op) =>
-    op.and(
-      op.eq(attr.userId, 'alice'),
-      op.size(attr.tags).gte(3)
-    )
-  )
+  .where((attr, op) => op.and(op.eq(attr.userId, 'alice'), op.size(attr.tags).gte(3)))
   .execute();
 
 // Complex nested conditions
@@ -409,10 +395,7 @@ await table.entities.Photo.query()
       op.eq(attr.username, 'alice'),
       op.or(
         op.gt(attr.likesCount, 100),
-        op.and(
-          op.gt(attr.commentCount, 50),
-          op.exists(attr.featured)
-        )
+        op.and(op.gt(attr.commentCount, 50), op.exists(attr.featured))
       )
     )
   )
@@ -469,28 +452,28 @@ if (page1.lastEvaluatedKey) {
 
 ```typescript
 export {
-  Table,                           // Main Table class
-  type SchemaDefinition,           // Schema type
-  type ModelDefinition,            // Model type
-  type AttributeDefinition,        // Union of all attribute types
-  type ScalarAttributeDefinition,  // String/Number/Boolean/Date attribute
-  type ObjectAttributeDefinition,  // Nested object attribute with schema
-  type ArrayAttributeDefinition,   // Typed array attribute with items
-  type PrimaryKeyDefinition,       // PK + SK key definition
-  type KeyDefinition,              // Single key definition
-  type IndexDefinition,            // Index (hash + optional sort)
-  type IndexesDefinition,          // All table indexes
-  type SchemaParams,               // Global schema params
-  type InferModel,                 // Infer model type (deprecated)
-  type InferInput,                 // Infer input type (deprecated)
-  type InferKeyInput,              // Infer key type
-  type InferModelFromSchema,       // Infer from full schema (preferred)
-  type InferInputFromSchema,       // Infer input from full schema (preferred)
-  type TimestampFields,            // createdAt/updatedAt fields type
-  type ArrayItem,                  // Extract item type from array attribute
-  createDynamoDBLogger,            // Logger factory
-  type DynamoDBLogger,             // Logger type
-  type DynamoDBLoggerConfig,       // Logger config
+  Table, // Main Table class
+  type SchemaDefinition, // Schema type
+  type ModelDefinition, // Model type
+  type AttributeDefinition, // Union of all attribute types
+  type ScalarAttributeDefinition, // String/Number/Boolean/Date attribute
+  type ObjectAttributeDefinition, // Nested object attribute with schema
+  type ArrayAttributeDefinition, // Typed array attribute with items
+  type PrimaryKeyDefinition, // PK + SK key definition
+  type KeyDefinition, // Single key definition
+  type IndexDefinition, // Index (hash + optional sort)
+  type IndexesDefinition, // All table indexes
+  type SchemaParams, // Global schema params
+  type InferModel, // Infer model type (deprecated)
+  type InferInput, // Infer input type (deprecated)
+  type InferKeyInput, // Infer key type
+  type InferModelFromSchema, // Infer from full schema (preferred)
+  type InferInputFromSchema, // Infer input from full schema (preferred)
+  type TimestampFields, // createdAt/updatedAt fields type
+  type ArrayItem, // Extract item type from array attribute
+  createDynamoDBLogger, // Logger factory
+  type DynamoDBLogger, // Logger type
+  type DynamoDBLoggerConfig, // Logger config
 };
 ```
 

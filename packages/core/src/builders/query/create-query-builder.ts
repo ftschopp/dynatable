@@ -27,32 +27,6 @@ type QueryState<Model> = {
 };
 
 /**
- * Determines if a field is a key field (used in pk/sk or index key templates)
- */
-function isKeyField(fieldName: string, model?: ModelDefinition, indexName?: string): boolean {
-  if (!model?.key) return false;
-
-  // When an index is specified, also check model.index for key templates
-  if (indexName && model.index) {
-    for (const [, keyDef] of Object.entries(model.index)) {
-      const templateVars = extractTemplateVars(keyDef.value);
-      if (templateVars.includes(fieldName)) {
-        return true;
-      }
-    }
-  }
-
-  const keyEntries = Object.entries(model.key);
-  for (const [, keyDef] of keyEntries) {
-    const templateVars = extractTemplateVars(keyDef.value);
-    if (templateVars.includes(fieldName)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-/**
  * Maps a model attribute name to its corresponding DynamoDB key name (PK/SK)
  * Also returns the key template for value transformation
  */
@@ -66,6 +40,9 @@ function getKeyNameForAttribute(
   // When an index is specified, check model.index first for key templates
   if (indexName && model.index) {
     for (const [keyName, keyDef] of Object.entries(model.index)) {
+      if (!keyName.startsWith(indexName)) {
+        continue;
+      }
       const templateVars = extractTemplateVars(keyDef.value);
       if (templateVars.includes(fieldName)) {
         return { keyName, template: keyDef.value };
@@ -253,7 +230,11 @@ function createQueryExecutor<Model>(state: QueryState<Model>): QueryExecutor<Mod
       }
 
       // Separate key conditions from filter conditions
-      const { keyConditions, filterConditions } = separateConditions(state.condition, state.model, state.indexName);
+      const { keyConditions, filterConditions } = separateConditions(
+        state.condition,
+        state.model,
+        state.indexName
+      );
 
       // Build KeyConditionExpression (simple AND)
       const keyExpr = buildSimpleAndExpression(keyConditions);

@@ -5,7 +5,10 @@ import { ExecutableBuilder } from '../shared';
  * Builder for DynamoDB GetItem operations.
  * Supports projection, consistent read, and inspection of the final parameters.
  */
-export interface GetBuilder<KeyInput, Model> extends Omit<ExecutableBuilder<Model | undefined>, 'dbParams'> {
+export interface GetBuilder<KeyInput, Model> extends Omit<
+  ExecutableBuilder<Model | undefined>,
+  'dbParams'
+> {
   /**
    * Adds a projection expression to only return specific attributes.
    * Returns a new immutable builder.

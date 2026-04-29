@@ -70,8 +70,7 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
             expiresAt,
           },
           // Only succeed if lock doesn't exist or has expired
-          ConditionExpression:
-            'attribute_not_exists(PK) OR expiresAt < :now',
+          ConditionExpression: 'attribute_not_exists(PK) OR expiresAt < :now',
           ExpressionAttributeValues: {
             ':now': now,
           },

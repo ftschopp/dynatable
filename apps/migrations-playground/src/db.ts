@@ -36,9 +36,7 @@ export interface TableInfo {
 
 export async function getTableInfo(): Promise<TableInfo> {
   try {
-    const result = await rawClient.send(
-      new DescribeTableCommand({ TableName: TABLE_NAME })
-    );
+    const result = await rawClient.send(new DescribeTableCommand({ TableName: TABLE_NAME }));
 
     return {
       exists: true,
@@ -87,9 +85,7 @@ export async function queryByPK(pk: string): Promise<Record<string, any>[]> {
   return result.Items || [];
 }
 
-export async function getItemsByEntityType(
-  entityPrefix: string
-): Promise<Record<string, any>[]> {
+export async function getItemsByEntityType(entityPrefix: string): Promise<Record<string, any>[]> {
   const result = await client.send(
     new ScanCommand({
       TableName: TABLE_NAME,

@@ -6,9 +6,7 @@ export async function showTableInfo(): Promise<void> {
   console.log('\n📊 Table Information\n');
 
   try {
-    const result = await rawClient.send(
-      new DescribeTableCommand({ TableName: tableName })
-    );
+    const result = await rawClient.send(new DescribeTableCommand({ TableName: tableName }));
 
     const table = result.Table;
     if (!table) {
@@ -55,9 +53,7 @@ export async function showTableInfo(): Promise<void> {
           colWidths: [25, 40],
         });
 
-        const keySchema = gsi.KeySchema?.map(
-          (k) => `${k.AttributeName} (${k.KeyType})`
-        ).join(', ');
+        const keySchema = gsi.KeySchema?.map((k) => `${k.AttributeName} (${k.KeyType})`).join(', ');
 
         gsiTable.push(
           ['Key Schema', keySchema || ''],

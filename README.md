@@ -120,7 +120,9 @@ const params = table.entities.User.put({ username: 'alice', name: 'Alice' }).dbP
 // params: PutCommandInput
 
 // Update operations return UpdateCommandInput
-const updateParams = table.entities.User.update({ username: 'alice' }).set('name', 'Bob').dbParams();
+const updateParams = table.entities.User.update({ username: 'alice' })
+  .set('name', 'Bob')
+  .dbParams();
 // updateParams: UpdateCommandInput
 ```
 
@@ -129,15 +131,14 @@ const updateParams = table.entities.User.update({ username: 'alice' }).set('name
 Transaction builders accept typed parameters from AWS SDK:
 
 ```typescript
-import type {
-  TransactPutParams,
-  TransactUpdateParams,
-} from '@ftschopp/dynatable-core';
+import type { TransactPutParams, TransactUpdateParams } from '@ftschopp/dynatable-core';
 
 await table
   .transactWrite()
   .addPut(table.entities.Like.put({ photoId: '123', likingUsername: 'alice' }).dbParams())
-  .addUpdate(table.entities.Photo.update({ username: 'bob', photoId: '123' }).add('likesCount', 1).dbParams())
+  .addUpdate(
+    table.entities.Photo.update({ username: 'bob', photoId: '123' }).add('likesCount', 1).dbParams()
+  )
   .execute();
 ```
 
@@ -454,9 +455,7 @@ const activeUsers = await table.entities.User.scan()
   .execute();
 
 // Scan with pagination
-const page = await table.entities.User.scan()
-  .limit(20)
-  .executeWithPagination();
+const page = await table.entities.User.scan().limit(20).executeWithPagination();
 ```
 
 ### Advanced Operators
@@ -472,12 +471,7 @@ await table.entities.User.update({ username: 'alice' })
 
 // Contains (for strings, sets, lists)
 const users = await table.entities.User.query()
-  .where((attr, op) =>
-    op.and(
-      op.eq(attr.username, 'alice'),
-      op.contains(attr.tags, 'premium')
-    )
-  )
+  .where((attr, op) => op.and(op.eq(attr.username, 'alice'), op.contains(attr.tags, 'premium')))
   .execute();
 
 // IN operator
@@ -510,8 +504,8 @@ import { createDynamoDBLogger } from '@ftschopp/dynatable-core';
 
 // Create a logger
 const logger = createDynamoDBLogger({
-  enabled: true,      // Enable/disable logging
-  logParams: true,    // Log request parameters
+  enabled: true, // Enable/disable logging
+  logParams: true, // Log request parameters
   logResponse: false, // Log responses (can be verbose)
 });
 
@@ -538,7 +532,7 @@ const cleanKeysMiddleware = {
   response: (item: any) => {
     const { PK, SK, GSI1PK, GSI1SK, ...cleaned } = item;
     return cleaned;
-  }
+  },
 };
 
 // Middleware is automatically applied based on schema params
@@ -551,7 +545,8 @@ Atomic reads across multiple items:
 
 ```typescript
 // Read multiple items atomically
-const result = await table.transactGet()
+const result = await table
+  .transactGet()
   .addGet(table.entities.User.get({ username: 'alice' }).dbParams())
   .addGet(table.entities.Photo.get({ username: 'alice', photoId: 'photo1' }).dbParams())
   .addGet(table.entities.Like.get({ photoId: 'photo1', likingUsername: 'bob' }).dbParams())
@@ -567,17 +562,17 @@ const [user, photo, like] = result.items;
 
 ```typescript
 import {
-  Table,                          // Main Table class
-  type SchemaDefinition,          // Schema type definition
-  type ModelDefinition,           // Model type definition
-  type InferModel,                // Infer model type from definition
-  type InferInput,                // Infer input type from definition
-  type InferKeyInput,             // Infer key input type
-  type InferModelFromSchema,      // Infer model type from full schema
-  type InferInputFromSchema,      // Infer input type from full schema
-  createDynamoDBLogger,           // Create logger instance
-  type DynamoDBLogger,            // Logger type
-  type DynamoDBLoggerConfig,      // Logger config type
+  Table, // Main Table class
+  type SchemaDefinition, // Schema type definition
+  type ModelDefinition, // Model type definition
+  type InferModel, // Infer model type from definition
+  type InferInput, // Infer input type from definition
+  type InferKeyInput, // Infer key input type
+  type InferModelFromSchema, // Infer model type from full schema
+  type InferInputFromSchema, // Infer input type from full schema
+  createDynamoDBLogger, // Create logger instance
+  type DynamoDBLogger, // Logger type
+  type DynamoDBLoggerConfig, // Logger config type
 } from '@ftschopp/dynatable-core';
 ```
 
@@ -602,6 +597,7 @@ Table-level operations:
 ### All Available Operators
 
 #### Comparison Operators
+
 - **`eq(attr, value)`** - Equals (=)
 - **`ne(attr, value)`** - Not equals (<>)
 - **`lt(attr, value)`** - Less than (<)
@@ -611,23 +607,28 @@ Table-level operations:
 - **`between(attr, low, high)`** - Between two values
 
 #### String Operators
+
 - **`beginsWith(attr, prefix)`** - Begins with a string prefix
 - **`contains(attr, value)`** - Contains a substring/value (works with strings, sets, lists)
 
 #### Existence Operators
+
 - **`exists(attr)`** - Attribute exists
 - **`notExists(attr)`** - Attribute does not exist
 
 #### Type Checking
+
 - **`attributeType(attr, type)`** - Check attribute type
   - Types: `'S'` (String), `'N'` (Number), `'B'` (Binary), `'SS'` (String Set), `'NS'` (Number Set), `'BS'` (Binary Set), `'M'` (Map), `'L'` (List), `'NULL'`, `'BOOL'`
 
 #### Advanced Operators
+
 - **`in(attr, values[])`** - Value is in array
 - **`size(attr)`** - Get size of attribute, returns `SizeRef` with comparison methods:
   - `.eq(n)`, `.ne(n)`, `.lt(n)`, `.lte(n)`, `.gt(n)`, `.gte(n)`
 
 #### Logical Operators
+
 - **`and(...conditions)`** - Combine conditions with AND
 - **`or(...conditions)`** - Combine conditions with OR
 - **`not(condition)`** - Negate a condition
@@ -635,6 +636,7 @@ Table-level operations:
 ### Builder Methods Reference
 
 #### GetBuilder
+
 ```typescript
 .select(attributes?: string[])      // Project specific attributes
 .consistentRead(enabled?: boolean)  // Enable consistent read
@@ -643,6 +645,7 @@ Table-level operations:
 ```
 
 #### PutBuilder
+
 ```typescript
 .ifNotExists()                      // Only put if item doesn't exist
 .returning(value: 'NONE' | 'ALL_OLD') // Return values
@@ -652,6 +655,7 @@ Table-level operations:
 ```
 
 #### UpdateBuilder
+
 ```typescript
 .set(attr, value)                   // Set attribute value
 .remove(attr)                       // Remove attribute
@@ -664,6 +668,7 @@ Table-level operations:
 ```
 
 #### DeleteBuilder
+
 ```typescript
 .returning(value: 'NONE' | 'ALL_OLD') // Return deleted item
 .where(condition)                   // Conditional expression
@@ -672,6 +677,7 @@ Table-level operations:
 ```
 
 #### QueryBuilder
+
 ```typescript
 .where(condition)                   // Key condition + filter expression
 .limit(count)                       // Max items to return
@@ -685,6 +691,7 @@ Table-level operations:
 ```
 
 #### ScanBuilder
+
 ```typescript
 .where(condition)                   // Filter expression
 .limit(count)                       // Max items to return
@@ -696,6 +703,7 @@ Table-level operations:
 ```
 
 #### BatchGetBuilder
+
 ```typescript
 .select(attributes?: string[])      // Project attributes
 .consistentRead(enabled?: boolean)  // Consistent read
@@ -703,11 +711,13 @@ Table-level operations:
 ```
 
 #### BatchWriteBuilder
+
 ```typescript
 .execute()                          // Execute batch write
 ```
 
 #### TransactWriteBuilder
+
 ```typescript
 .addPut(params)                     // Add put operation
 .addUpdate(params)                  // Add update operation
@@ -718,6 +728,7 @@ Table-level operations:
 ```
 
 #### TransactGetBuilder
+
 ```typescript
 .addGet(params)                     // Add get operation
 .execute()                          // Execute transaction, returns { items }
@@ -727,67 +738,70 @@ Table-level operations:
 
 ```typescript
 const schema = {
-  format: 'dynatable:1.0.0',        // Schema format version
-  version: '1.0.0',                 // Your schema version
+  format: 'dynatable:1.0.0', // Schema format version
+  version: '1.0.0', // Your schema version
 
   indexes: {
     primary: {
-      hash: 'PK',                   // Partition key name
-      sort: 'SK'                    // Sort key name (optional)
+      hash: 'PK', // Partition key name
+      sort: 'SK', // Sort key name (optional)
     },
-    gsi1: {                         // Global Secondary Index
+    gsi1: {
+      // Global Secondary Index
       hash: 'GSI1PK',
-      sort: 'GSI1SK'
+      sort: 'GSI1SK',
     },
   },
 
   models: {
     User: {
-      key: {                        // Primary key definition
+      key: {
+        // Primary key definition
         PK: {
           type: String,
-          value: 'USER#${username}' // Template with variables
+          value: 'USER#${username}', // Template with variables
         },
         SK: {
           type: String,
-          value: 'USER#${username}'
+          value: 'USER#${username}',
         },
       },
-      index: {                      // GSI key definition (optional)
+      index: {
+        // GSI key definition (optional)
         GSI1PK: { type: String, value: 'USER' },
         GSI1SK: { type: String, value: 'USER#${username}' },
       },
       attributes: {
         username: {
           type: String,
-          required: true
+          required: true,
         },
         name: {
           type: String,
-          required: true
+          required: true,
         },
         email: {
-          type: String
+          type: String,
         },
         age: {
           type: Number,
-          default: 0
+          default: 0,
         },
         userId: {
           type: String,
-          generate: 'ulid'          // Auto-generate ULID
+          generate: 'ulid', // Auto-generate ULID
         },
         tags: {
-          type: Array
+          type: Array,
         },
       },
     },
   },
 
   params: {
-    timestamps: true,               // Auto createdAt/updatedAt
-    isoDates: true,                 // Use ISO 8601 format
-    cleanInternalKeys: false,       // Hide PK/SK in results
+    timestamps: true, // Auto createdAt/updatedAt
+    isoDates: true, // Use ISO 8601 format
+    cleanInternalKeys: false, // Hide PK/SK in results
   },
 } as const;
 ```

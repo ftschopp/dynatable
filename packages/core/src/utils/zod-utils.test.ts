@@ -138,9 +138,7 @@ describe('zod-utils', () => {
       const zodType = typeToZod(attr);
 
       expect(() => zodType.parse([{ status: 'PENDING' }])).not.toThrow();
-      expect(() =>
-        zodType.parse([{ date: '2024-01-01', status: 'DONE' }])
-      ).not.toThrow();
+      expect(() => zodType.parse([{ date: '2024-01-01', status: 'DONE' }])).not.toThrow();
       expect(() => zodType.parse([{ date: '2024-01-01' }])).toThrow(); // missing status
     });
 
@@ -172,9 +170,7 @@ describe('zod-utils', () => {
       };
       const zodType = typeToZod(attr);
 
-      expect(() =>
-        zodType.parse({ value: 100, breakdown: { base: 90, fees: 10 } })
-      ).not.toThrow();
+      expect(() => zodType.parse({ value: 100, breakdown: { base: 90, fees: 10 } })).not.toThrow();
       expect(() => zodType.parse({ value: 100 })).not.toThrow(); // breakdown optional
       expect(() => zodType.parse({})).toThrow(); // value required
     });

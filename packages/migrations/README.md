@@ -326,11 +326,7 @@ interface MigrationConfig {
 You can also use the migration runner programmatically:
 
 ```typescript
-import {
-  MigrationRunner,
-  loadConfig,
-  createDynamoDBClient,
-} from '@ftschopp/dynatable-migrations';
+import { MigrationRunner, loadConfig, createDynamoDBClient } from '@ftschopp/dynatable-migrations';
 
 const config = await loadConfig();
 const client = createDynamoDBClient(config);

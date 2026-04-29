@@ -48,13 +48,8 @@ export async function showAllData(): Promise<void> {
 
     // Priority keys first
     const priorityKeys = ['PK', 'SK', 'GSI1PK', 'GSI1SK'];
-    const otherKeys = [...allKeys]
-      .filter((k) => !priorityKeys.includes(k))
-      .sort();
-    const orderedKeys = [
-      ...priorityKeys.filter((k) => allKeys.has(k)),
-      ...otherKeys,
-    ];
+    const otherKeys = [...allKeys].filter((k) => !priorityKeys.includes(k)).sort();
+    const orderedKeys = [...priorityKeys.filter((k) => allKeys.has(k)), ...otherKeys];
 
     // Limit columns for readability
     const displayKeys = orderedKeys.slice(0, 8);
@@ -122,10 +117,7 @@ export async function showDataByEntity(): Promise<void> {
   const otherKeys = [...allKeys]
     .filter((k) => !priorityKeys.includes(k) && !k.startsWith('GSI'))
     .sort();
-  const orderedKeys = [
-    ...priorityKeys.filter((k) => allKeys.has(k)),
-    ...otherKeys,
-  ];
+  const orderedKeys = [...priorityKeys.filter((k) => allKeys.has(k)), ...otherKeys];
 
   const displayKeys = orderedKeys.slice(0, 10);
 

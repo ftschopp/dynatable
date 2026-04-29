@@ -19,7 +19,9 @@ function ensureSnapshotsDir(): void {
       fs.mkdirSync(SNAPSHOTS_DIR, { recursive: true });
     }
   } catch (error) {
-    throw new Error(`Failed to create snapshots directory: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to create snapshots directory: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 
@@ -38,7 +40,9 @@ function loadSnapshot(filename: string): Snapshot {
     const content = fs.readFileSync(filepath, 'utf-8');
     return JSON.parse(content);
   } catch (error) {
-    throw new Error(`Failed to load snapshot '${filename}': ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to load snapshot '${filename}': ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 }
 
@@ -58,12 +62,11 @@ export async function showSnapshot(): Promise<void> {
   };
 
   try {
-    fs.writeFileSync(
-      path.join(SNAPSHOTS_DIR, filename),
-      JSON.stringify(snapshot, null, 2)
-    );
+    fs.writeFileSync(path.join(SNAPSHOTS_DIR, filename), JSON.stringify(snapshot, null, 2));
   } catch (error) {
-    throw new Error(`Failed to save snapshot: ${error instanceof Error ? error.message : String(error)}`);
+    throw new Error(
+      `Failed to save snapshot: ${error instanceof Error ? error.message : String(error)}`
+    );
   }
 
   console.log(`\n✅ Snapshot saved: ${filename}`);
@@ -154,10 +157,7 @@ export async function compareSnapshots(): Promise<void> {
       // Check for modifications
       const changes: string[] = [];
 
-      const allKeys = new Set([
-        ...Object.keys(beforeItem),
-        ...Object.keys(afterItem),
-      ]);
+      const allKeys = new Set([...Object.keys(beforeItem), ...Object.keys(afterItem)]);
 
       for (const k of allKeys) {
         const bv = JSON.stringify(beforeItem[k]);

@@ -1,9 +1,5 @@
 import { select } from '@inquirer/prompts';
-import {
-  BatchWriteCommand,
-  ScanCommand,
-  DeleteCommand,
-} from '@aws-sdk/lib-dynamodb';
+import { BatchWriteCommand, ScanCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
 import { client, tableName, scanAllItems } from '../db';
 
 const SAMPLE_USERS = [
@@ -151,7 +147,9 @@ async function batchWriteItems(items: Record<string, any>[]): Promise<void> {
     }
 
     if (itemsToWrite.length > 0) {
-      console.warn(`Warning: ${itemsToWrite.length} items could not be written after ${maxRetries} retries`);
+      console.warn(
+        `Warning: ${itemsToWrite.length} items could not be written after ${maxRetries} retries`
+      );
     }
   }
 }
