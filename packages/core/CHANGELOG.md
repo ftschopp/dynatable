@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-core [1.2.4](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.2.3...@ftschopp/dynatable-core@1.2.4) (2026-04-29)
+
+
+### Bug Fixes
+
+* get keyname for attribute index ([5bd47c3](https://github.com/ftschopp/dynatable/commit/5bd47c38585c78153ff51f5e457777e928d6e667))
+
 ## @ftschopp/dynatable-core [1.2.3](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.2.2...@ftschopp/dynatable-core@1.2.3) (2026-04-27)
 
 
