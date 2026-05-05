@@ -23,10 +23,7 @@ users.forEach((user) => console.log(user.username));
 ## With Attribute Projection
 
 ```typescript
-const users = await table.entities.User.batchGet([
-  { username: 'alice' },
-  { username: 'bob' },
-])
+const users = await table.entities.User.batchGet([{ username: 'alice' }, { username: 'bob' }])
   .select(['username', 'name', 'followerCount'])
   .execute();
 ```
@@ -34,10 +31,7 @@ const users = await table.entities.User.batchGet([
 ## With Consistent Read
 
 ```typescript
-const users = await table.entities.User.batchGet([
-  { username: 'alice' },
-  { username: 'bob' },
-])
+const users = await table.entities.User.batchGet([{ username: 'alice' }, { username: 'bob' }])
   .consistentRead()
   .execute();
 ```
