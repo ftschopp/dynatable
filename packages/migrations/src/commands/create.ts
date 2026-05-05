@@ -11,20 +11,21 @@ type VersionBumpType = 'major' | 'minor' | 'patch';
 async function getNextVersion(loader: MigrationLoader, bumpType: VersionBumpType): Promise<string> {
   const migrations = await loader['loadMigrations']();
 
-  if (migrations.length === 0) {
-    return '0.1.0';
-  }
+  const lastMigration = migrations.length > 0 ? migrations[migrations.length - 1] : null;
+  const lastVersion = lastMigration?.version;
+  const parts = lastVersion?.split('.');
 
-  const lastMigration = migrations[migrations.length - 1];
-  if (!lastMigration) {
-    return '0.1.0';
-  }
-
-  const lastVersion = lastMigration.version;
-  const parts = lastVersion.split('.');
-
-  if (parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) {
-    return '0.1.0';
+  if (!parts || parts.length !== 3 || !parts[0] || !parts[1] || !parts[2]) {
+    switch (bumpType) {
+      case 'major':
+        return '1.0.0';
+      case 'minor':
+        return '0.1.0';
+      case 'patch':
+        return '0.0.1';
+      default:
+        return '0.1.0';
+    }
   }
 
   const major = parseInt(parts[0], 10);
