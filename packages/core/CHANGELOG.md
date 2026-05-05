@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-core [1.2.5](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.2.4...@ftschopp/dynatable-core@1.2.5) (2026-05-05)
+
+
+### Bug Fixes
+
+* remove unused isoDates ([63c3064](https://github.com/ftschopp/dynatable/commit/63c30649c5fd88c63596bff22542acd2d3ec828b))
+
 ## @ftschopp/dynatable-core [1.2.4](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.2.3...@ftschopp/dynatable-core@1.2.4) (2026-04-29)
 
 
