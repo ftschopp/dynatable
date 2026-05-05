@@ -22,8 +22,7 @@ export type BatchGetBuilder<Model> = {
   dbParams(): BatchGetItemCommandInput;
 
   /**
-   * Execute the BatchGetItem command and return the items.
-   * Returns an object mapping table names to arrays of items.
+   * Execute the BatchGetItem command and return the items as a flat array.
    */
-  execute(): Promise<Record<string, Model[]>>;
+  execute(): Promise<Model[]>;
 };

@@ -141,7 +141,6 @@ export type ModelDefinition = {
  * Schema parameters configuration
  */
 export type SchemaParams = {
-  isoDates?: boolean;
   timestamps?: boolean;
   cleanInternalKeys?: boolean;
 };

@@ -42,8 +42,7 @@ describe('Pagination and Timestamps Integration Tests', () => {
       },
     },
     params: {
-      isoDates: true,
-      timestamps: true, // Enable automatic timestamps
+      timestamps: true, // Enable automatic timestamps (stored as ISO strings)
     },
   } as const;
 

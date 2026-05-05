@@ -287,12 +287,10 @@ describe('Schema Definition Validation', () => {
         },
       },
       params: {
-        isoDates: true,
         timestamps: true,
       },
     } as const satisfies SchemaDefinition;
 
-    expect(schemaWithParams.params?.isoDates).toBe(true);
     expect(schemaWithParams.params?.timestamps).toBe(true);
   });
 

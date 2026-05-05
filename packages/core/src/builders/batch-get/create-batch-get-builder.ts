@@ -84,23 +84,18 @@ export function createBatchGetBuilder<Model>(
     },
 
     /**
-     * Execute the BatchGetItem command and return the items.
+     * Execute the BatchGetItem command and return the items as a flat array.
      */
-    async execute(): Promise<Record<string, Model[]>> {
+    async execute(): Promise<Model[]> {
       const params = this.dbParams();
       const result: BatchGetCommandOutput = await client.send(new BatchGetCommand(params));
       logger?.log('BatchGetCommand', params, result);
 
-      // Transform the response into a more usable format
-      const responses: Record<string, Model[]> = {};
-
-      if (result.Responses) {
-        for (const [tableName, items] of Object.entries(result.Responses)) {
-          responses[tableName] = items as unknown as Model[];
-        }
+      if (!result.Responses) {
+        return [];
       }
 
-      return responses;
+      return Object.values(result.Responses).flat() as unknown as Model[];
     },
   };
 }

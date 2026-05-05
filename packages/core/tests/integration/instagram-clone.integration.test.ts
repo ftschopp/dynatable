@@ -98,7 +98,6 @@ const InstagramSchema = {
     },
   },
   params: {
-    isoDates: true,
     timestamps: true,
   },
 } as const;
