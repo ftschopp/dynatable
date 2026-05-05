@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-migrations [1.2.2](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.2.1...@ftschopp/dynatable-migrations@1.2.2) (2026-05-05)
+
+
+### Bug Fixes
+
+* migration next version ([af97480](https://github.com/ftschopp/dynatable/commit/af97480882af546a58957474f9fef46697314bb3))
+
 ## @ftschopp/dynatable-migrations [1.2.1](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.2.0...@ftschopp/dynatable-migrations@1.2.1) (2026-04-29)
 
 
