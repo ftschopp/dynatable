@@ -36,14 +36,16 @@ const allPosts = baseQuery.execute();
 
 #### Runtime Validation
 
-Automatic data validation with Zod ensures your data always matches your schema.
+Automatic Zod validation enforces your declared types and required fields at runtime:
 
 ```typescript
 await table.entities.User.put({
   username: 'alice',
-  email: 'invalid-email', // Error: Invalid email format
+  age: '25', // Error: Expected number, got string
 }).execute();
 ```
+
+For richer rules (email format, length, regex…), validate inputs with your own Zod schemas before calling `.put()` / `.update()`.
 
 #### Developer Experience First
 

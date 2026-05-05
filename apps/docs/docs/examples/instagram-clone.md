@@ -52,6 +52,8 @@ A complete example of an Instagram clone with users, photos, likes, comments, an
 | Comment     | `PC#{photoId}`              | `COMMENT#{commentId}`        | -                            | -                           |
 | Follow      | `FOLLOW#{followedUsername}` | `FOLLOW#{followingUsername}` | `FOLLOW#{followingUsername}` | `FOLLOW#{followedUsername}` |
 
+The GSI in this example is named `gsi1`, with column names `GSI1PK` and `GSI1SK`.
+
 ### Access Patterns
 
 1. **User**
@@ -71,7 +73,7 @@ A complete example of an Instagram clone with users, photos, likes, comments, an
 4. **Likes**
    - Like a photo: `TransactWrite` - Put Like + Update Photo.likesCount
    - Unlike photo: `TransactWrite` - Delete Like + Update Photo.likesCount
-   - List likes (chronological): Query GSI1 with GSI1PK=`PL#{photoId}`
+   - List likes (chronological): Query gsi1 with GSI1PK=`PL#{photoId}`
    - Check if user liked: `GetItem` with PK=`PL#{photoId}`, SK=`LIKE#{username}`
 
 5. **Comments**
@@ -83,7 +85,7 @@ A complete example of an Instagram clone with users, photos, likes, comments, an
    - Follow user: `TransactWrite` - Put Follow + Update followerCount + Update followingCount
    - Unfollow user: `TransactWrite` - Delete Follow + Update followerCount + Update followingCount
    - List followers: `Query` with PK=`FOLLOW#{username}`, then `BatchGetItem` for user details
-   - List following: Query GSI1 with GSI1PK=`FOLLOW#{username}`, then `BatchGetItem` for details
+   - List following: Query gsi1 with GSI1PK=`FOLLOW#{username}`, then `BatchGetItem` for details
 
 ## Schema Definition
 
@@ -97,7 +99,7 @@ const InstagramSchema = {
 
   indexes: {
     primary: { hash: 'PK', sort: 'SK' },
-    gs1: { hash: 'GSI1PK', sort: 'GSI1SK' },
+    gsi1: { hash: 'GSI1PK', sort: 'GSI1SK' },
   },
 
   models: {
@@ -167,12 +169,12 @@ const InstagramSchema = {
 
     Like: {
       key: {
-        pk: { type: String, value: 'PL#${photoId}' },
-        sk: { type: String, value: 'LIKE#${likingUsername}' },
+        PK: { type: String, value: 'PL#${photoId}' },
+        SK: { type: String, value: 'LIKE#${likingUsername}' },
       },
       index: {
-        gs1pk: { type: String, value: 'PL#${photoId}' },
-        gs1sk: { type: String, value: 'LIKE#${likeId}' },
+        GSI1PK: { type: String, value: 'PL#${photoId}' },
+        GSI1SK: { type: String, value: 'LIKE#${likeId}' },
       },
       attributes: {
         photoId: { type: String, required: true },
@@ -183,8 +185,8 @@ const InstagramSchema = {
 
     Comment: {
       key: {
-        pk: { type: String, value: 'PC#${photoId}' },
-        sk: { type: String, value: 'COMMENT#${commentId}' },
+        PK: { type: String, value: 'PC#${photoId}' },
+        SK: { type: String, value: 'COMMENT#${commentId}' },
       },
       attributes: {
         photoId: { type: String, required: true },
@@ -196,12 +198,12 @@ const InstagramSchema = {
 
     Follow: {
       key: {
-        pk: { type: String, value: 'FOLLOW#${followedUsername}' },
-        sk: { type: String, value: 'FOLLOW#${followingUsername}' },
+        PK: { type: String, value: 'FOLLOW#${followedUsername}' },
+        SK: { type: String, value: 'FOLLOW#${followingUsername}' },
       },
       index: {
-        gs1pk: { type: String, value: 'FOLLOW#${followingUsername}' },
-        gs1sk: { type: String, value: 'FOLLOW#${followedUsername}' },
+        GSI1PK: { type: String, value: 'FOLLOW#${followingUsername}' },
+        GSI1SK: { type: String, value: 'FOLLOW#${followedUsername}' },
       },
       attributes: {
         followedUsername: { type: String, required: true },
@@ -211,7 +213,6 @@ const InstagramSchema = {
   },
 
   params: {
-    isoDates: true,
     timestamps: true,
   },
 } as const;
@@ -449,18 +450,16 @@ async function getPhotoLikes(photoId: string, limit: number = 50) {
   // Use GSI1 to sort by likeId (timestamp)
   const likes = await table.entities.Like.query()
     .where((attr, op) => op.eq(attr.photoId, photoId))
-    .useIndex('gs1')
+    .useIndex('gsi1')
     .limit(limit)
     .scanIndexForward(true) // Oldest first
     .execute();
 
   // Get user details
   if (likes.length > 0) {
-    const users = await table.entities.User.batchGet(
+    return await table.entities.User.batchGet(
       likes.map((like) => ({ username: like.likingUsername }))
     ).execute();
-
-    return users;
   }
 
   return [];
@@ -675,12 +674,9 @@ async function getFollowers(username: string, limit: number = 50) {
 
   if (follows.length === 0) return [];
 
-  // BatchGet to get user details
-  const followers = await table.entities.User.batchGet(
+  return await table.entities.User.batchGet(
     follows.map((f) => ({ username: f.followingUsername }))
   ).execute();
-
-  return followers;
 }
 
 // Usage
@@ -698,18 +694,15 @@ async function getFollowing(username: string, limit: number = 50) {
   // Query on GSI1 to get followed users
   const follows = await table.entities.Follow.query()
     .where((attr, op) => op.eq(attr.followingUsername, username))
-    .useIndex('gs1')
+    .useIndex('gsi1')
     .limit(limit)
     .execute();
 
   if (follows.length === 0) return [];
 
-  // BatchGet to get user details
-  const following = await table.entities.User.batchGet(
+  return await table.entities.User.batchGet(
     follows.map((f) => ({ username: f.followedUsername }))
   ).execute();
-
-  return following;
 }
 
 // Usage

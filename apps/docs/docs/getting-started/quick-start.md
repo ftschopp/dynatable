@@ -16,15 +16,15 @@ export const BlogSchema = {
   version: '1.0.0',
   indexes: {
     primary: {
-      hash: 'pk',
-      sort: 'sk',
+      hash: 'PK',
+      sort: 'SK',
     },
   },
   models: {
     User: {
       key: {
-        pk: { type: String, value: 'USER#${username}' },
-        sk: { type: String, value: 'USER#${username}' },
+        PK: { type: String, value: 'USER#${username}' },
+        SK: { type: String, value: 'USER#${username}' },
       },
       attributes: {
         username: { type: String, required: true },
@@ -35,8 +35,8 @@ export const BlogSchema = {
     },
     Post: {
       key: {
-        pk: { type: String, value: 'USER#${username}' },
-        sk: { type: String, value: 'POST#${postId}' },
+        PK: { type: String, value: 'USER#${username}' },
+        SK: { type: String, value: 'POST#${postId}' },
       },
       attributes: {
         username: { type: String, required: true },
@@ -48,8 +48,7 @@ export const BlogSchema = {
     },
   },
   params: {
-    timestamps: true, // Automatic createdAt and updatedAt
-    isoDates: true, // Store dates as ISO strings
+    timestamps: true, // Automatic createdAt and updatedAt as ISO strings
   },
 } as const;
 ```
@@ -63,7 +62,7 @@ The `as const` at the end is crucial for proper TypeScript type inference.
 Initialize your table with the AWS DynamoDB client:
 
 ```typescript title="table.ts"
-import { Table } from 'dynatable';
+import { Table } from '@ftschopp/dynatable-core';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { BlogSchema } from './schema';
 
@@ -89,12 +88,12 @@ await client.send(
   new CreateTableCommand({
     TableName: 'BlogTable',
     KeySchema: [
-      { AttributeName: 'pk', KeyType: 'HASH' },
-      { AttributeName: 'sk', KeyType: 'RANGE' },
+      { AttributeName: 'PK', KeyType: 'HASH' },
+      { AttributeName: 'SK', KeyType: 'RANGE' },
     ],
     AttributeDefinitions: [
-      { AttributeName: 'pk', AttributeType: 'S' },
-      { AttributeName: 'sk', AttributeType: 'S' },
+      { AttributeName: 'PK', AttributeType: 'S' },
+      { AttributeName: 'SK', AttributeType: 'S' },
     ],
     BillingMode: 'PAY_PER_REQUEST',
   })
@@ -129,8 +128,8 @@ console.log(user);
 //   name: 'Alice Smith',
 //   email: 'alice@example.com',
 //   bio: 'Software engineer and blogger',
-//   createdAt: 2024-01-15T10:00:00.000Z,
-//   updatedAt: 2024-01-15T10:00:00.000Z
+//   createdAt: '2024-01-15T10:00:00.000Z',
+//   updatedAt: '2024-01-15T10:00:00.000Z'
 // }
 ```
 
@@ -251,20 +250,20 @@ if (result.lastEvaluatedKey) {
 Here's a complete working example:
 
 ```typescript title="example.ts"
-import { Table } from 'dynatable';
+import { Table } from '@ftschopp/dynatable-core';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 
 const BlogSchema = {
   format: 'dynatable:1.0.0',
   version: '1.0.0',
   indexes: {
-    primary: { hash: 'pk', sort: 'sk' },
+    primary: { hash: 'PK', sort: 'SK' },
   },
   models: {
     User: {
       key: {
-        pk: { type: String, value: 'USER#${username}' },
-        sk: { type: String, value: 'USER#${username}' },
+        PK: { type: String, value: 'USER#${username}' },
+        SK: { type: String, value: 'USER#${username}' },
       },
       attributes: {
         username: { type: String, required: true },

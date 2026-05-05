@@ -17,7 +17,7 @@ Get started with Dynatable in minutes.
 Install Dynatable using your preferred package manager:
 
 ```bash npm2yarn
-npm install dynatable
+npm install @ftschopp/dynatable-core
 ```
 
 ## Install AWS SDK
@@ -41,7 +41,7 @@ npm install zod
 Create a simple test file to verify everything is working:
 
 ```typescript title="test-dynatable.ts"
-import { Table } from 'dynatable';
+import { Table } from '@ftschopp/dynatable-core';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 
 console.log('Dynatable installed successfully!');

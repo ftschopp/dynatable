@@ -15,8 +15,8 @@ A simple entity with required and optional attributes:
 ```typescript
 User: {
   key: {
-    pk: { type: String, value: "USER#${userId}" },
-    sk: { type: String, value: "USER#${userId}" },
+    PK: { type: String, value: "USER#${userId}" },
+    SK: { type: String, value: "USER#${userId}" },
   },
   attributes: {
     userId: { type: String, generate: "ulid" },
@@ -84,8 +84,8 @@ Model one-to-one by embedding data or using the same keys:
 ```typescript
 User: {
   key: {
-    pk: { type: String, value: "USER#${userId}" },
-    sk: { type: String, value: "USER#${userId}" },
+    PK: { type: String, value: "USER#${userId}" },
+    SK: { type: String, value: "USER#${userId}" },
   },
   attributes: {
     userId: { type: String, generate: "ulid" },
@@ -103,8 +103,8 @@ User: {
 ```typescript
 User: {
   key: {
-    pk: { type: String, value: "USER#${userId}" },
-    sk: { type: String, value: "USER#${userId}" },
+    PK: { type: String, value: "USER#${userId}" },
+    SK: { type: String, value: "USER#${userId}" },
   },
   attributes: {
     userId: { type: String, generate: "ulid" },
@@ -114,8 +114,8 @@ User: {
 
 UserProfile: {
   key: {
-    pk: { type: String, value: "USER#${userId}" },
-    sk: { type: String, value: "PROFILE" },
+    PK: { type: String, value: "USER#${userId}" },
+    SK: { type: String, value: "PROFILE" },
   },
   attributes: {
     userId: { type: String, required: true },
@@ -134,16 +134,16 @@ Store child entities with parent's partition key:
 // Parent
 User: {
   key: {
-    pk: { type: String, value: "USER#${username}" },
-    sk: { type: String, value: "USER#${username}" },
+    PK: { type: String, value: "USER#${username}" },
+    SK: { type: String, value: "USER#${username}" },
   },
 }
 
 // Children
 Post: {
   key: {
-    pk: { type: String, value: "USER#${username}" },
-    sk: { type: String, value: "POST#${postId}" },
+    PK: { type: String, value: "USER#${username}" },
+    SK: { type: String, value: "POST#${postId}" },
   },
   attributes: {
     username: { type: String, required: true },
@@ -166,34 +166,35 @@ Use junction entities for many-to-many relationships:
 // User entity
 User: {
   key: {
-    pk: { type: String, value: "USER#${userId}" },
-    sk: { type: String, value: "USER#${userId}" },
+    PK: { type: String, value: "USER#${userId}" },
+    SK: { type: String, value: "USER#${userId}" },
   },
 }
 
 // Group entity
 Group: {
   key: {
-    pk: { type: String, value: "GROUP#${groupId}" },
-    sk: { type: String, value: "GROUP#${groupId}" },
+    PK: { type: String, value: "GROUP#${groupId}" },
+    SK: { type: String, value: "GROUP#${groupId}" },
   },
 }
 
-// Junction entity
+// Junction entity — GSI keys live in `index`, not in `attributes`
 UserGroup: {
   key: {
-    pk: { type: String, value: "USER#${userId}" },
-    sk: { type: String, value: "GROUP#${groupId}" },
+    PK: { type: String, value: "USER#${userId}" },
+    SK: { type: String, value: "GROUP#${groupId}" },
+  },
+  index: {
+    // GSI for reverse lookup (Group → Users)
+    GSI1PK: { type: String, value: "GROUP#${groupId}" },
+    GSI1SK: { type: String, value: "USER#${userId}" },
   },
   attributes: {
     userId: { type: String, required: true },
     groupId: { type: String, required: true },
     role: { type: String, default: "member" },
     joinedAt: { type: Date },
-
-    // GSI for reverse lookup (Group → Users)
-    gsi1pk: { type: String, value: "GROUP#${groupId}" },
-    gsi1sk: { type: String, value: "USER#${userId}" },
   },
 }
 
@@ -202,9 +203,10 @@ const userGroups = await table.entities.UserGroup.query()
   .where((attr, op) => op.eq(attr.userId, 'user123'))
   .execute();
 
-// Get all users in a group (using GSI)
+// Get all users in a group (using GSI) — query by the source attribute
+// and Dynatable resolves the GSI key template automatically.
 const groupUsers = await table.entities.UserGroup.query()
-  .where((attr, op) => op.eq(attr.gsi1pk, 'GROUP#group456'))
+  .where((attr, op) => op.eq(attr.groupId, 'group456'))
   .useIndex('gsi1')
   .execute();
 ```
@@ -296,44 +298,13 @@ await table.entities.User.put({
 }).execute();
 ```
 
-### Sets
-
-DynamoDB native sets for unique values:
-
-```typescript
-Post: {
-  attributes: {
-    title: { type: String, required: true },
-
-    // String set
-    tags: {
-      type: Set,
-      items: String
-    },
-
-    // Number set
-    relatedPostIds: {
-      type: Set,
-      items: Number
-    },
-  },
-}
-
-// Usage
-await table.entities.Post.put({
-  title: "My Post",
-  tags: new Set(["javascript", "typescript"]),
-  relatedPostIds: new Set([1, 2, 3]),
-}).execute();
-```
-
 ## Validation
 
 Dynatable uses Zod for runtime validation.
 
 ### Type Validation
 
-Automatic type checking:
+Automatic type checking enforces the declared primitive types:
 
 ```typescript
 // ❌ This will fail
@@ -369,7 +340,7 @@ await table.entities.User.put({
 
 ### Custom Validation
 
-For complex validation, use Zod directly:
+For richer rules (email format, password strength, regex, etc.), validate with Zod before calling `.put()` / `.update()`:
 
 ```typescript
 import { z } from 'zod';
@@ -399,16 +370,16 @@ params: {
 }
 
 // All entities automatically get:
-// - createdAt: Set on creation
-// - updatedAt: Updated on every modification
+// - createdAt: Set on creation (ISO 8601 string)
+// - updatedAt: Updated on every modification (ISO 8601 string)
 
 const user = await table.entities.User.put({
   username: 'alice',
   name: 'Alice Smith',
 }).execute();
 
-console.log(user.createdAt); // 2024-01-15T10:00:00.000Z
-console.log(user.updatedAt); // 2024-01-15T10:00:00.000Z
+console.log(user.createdAt); // "2024-01-15T10:00:00.000Z"
+console.log(user.updatedAt); // "2024-01-15T10:00:00.000Z"
 
 // After update
 await table.entities.User.update({ username: 'alice' }).set('name', 'Alice Johnson').execute();
@@ -464,13 +435,18 @@ const activeUsers = await table.entities.User.scan()
 
 ## Computed Attributes
 
-Use GSI keys for computed values:
+Use GSI keys (declared in `index:`) for computed values that combine multiple attributes:
 
 ```typescript
 Post: {
   key: {
-    pk: { type: String, value: "USER#${username}" },
-    sk: { type: String, value: "POST#${postId}" },
+    PK: { type: String, value: "USER#${username}" },
+    SK: { type: String, value: "POST#${postId}" },
+  },
+  index: {
+    // Computed key combining multiple attributes for efficient querying
+    GSI1PK: { type: String, value: "POST" },
+    GSI1SK: { type: String, value: "${published}#${featured}#${postId}" },
   },
   attributes: {
     username: { type: String, required: true },
@@ -478,23 +454,16 @@ Post: {
     title: { type: String, required: true },
     published: { type: Boolean, default: false },
     featured: { type: Boolean, default: false },
-
-    // Computed attribute for querying
-    gsi1pk: { type: String, value: "POST" },
-    gsi1sk: {
-      type: String,
-      // Combines multiple attributes for efficient querying
-      value: "${published}#${featured}#${postId}"
-    },
   },
 }
 
-// Query published, featured posts
+// Query published, featured posts using the GSI.
+// You can pass the raw key with a pre-formatted prefix:
 const featuredPosts = await table.entities.Post.query()
   .where((attr, op) =>
     op.and(
-      op.eq(attr.gsi1pk, "POST"),
-      op.beginsWith(attr.gsi1sk, "true#true")
+      op.eq(attr.GSI1PK, "POST"),
+      op.beginsWith(attr.GSI1SK, "true#true")
     )
   )
   .useIndex('gsi1')

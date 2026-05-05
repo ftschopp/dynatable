@@ -187,8 +187,9 @@ async function runMigrations() {
   await runner.up();
   await runner.up({ limit: 1, dryRun: true });
 
-  // Rollback
-  await runner.down({ steps: 1 });
+  // Rollback (positional args: steps, dryRun)
+  await runner.down(1);
+  await runner.down(1, true); // dry-run rollback
 }
 ```
 

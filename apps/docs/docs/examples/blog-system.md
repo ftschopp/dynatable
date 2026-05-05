@@ -8,6 +8,8 @@ A complete example of building a blog system with users, posts, comments, and ta
 
 ## Schema Design
 
+GSI key templates live on each model's `index:` field, not inside `attributes:`.
+
 ```typescript
 export const BlogSchema = {
   format: 'dynatable:1.0.0',
@@ -15,20 +17,20 @@ export const BlogSchema = {
 
   indexes: {
     primary: {
-      hash: 'pk',
-      sort: 'sk',
+      hash: 'PK',
+      sort: 'SK',
     },
     gsi1: {
-      hash: 'gsi1pk',
-      sort: 'gsi1sk',
+      hash: 'GSI1PK',
+      sort: 'GSI1SK',
     },
   },
 
   models: {
     User: {
       key: {
-        pk: { type: String, value: 'USER#${username}' },
-        sk: { type: String, value: 'USER#${username}' },
+        PK: { type: String, value: 'USER#${username}' },
+        SK: { type: String, value: 'USER#${username}' },
       },
       attributes: {
         username: { type: String, required: true },
@@ -43,8 +45,13 @@ export const BlogSchema = {
 
     Post: {
       key: {
-        pk: { type: String, value: 'USER#${username}' },
-        sk: { type: String, value: 'POST#${postId}' },
+        PK: { type: String, value: 'USER#${username}' },
+        SK: { type: String, value: 'POST#${postId}' },
+      },
+      index: {
+        // GSI for querying all posts by status
+        GSI1PK: { type: String, value: 'POST' },
+        GSI1SK: { type: String, value: 'STATUS#${published}#${postId}' },
       },
       attributes: {
         username: { type: String, required: true },
@@ -54,17 +61,18 @@ export const BlogSchema = {
         published: { type: Boolean, default: false },
         views: { type: Number, default: 0 },
         likes: { type: Number, default: 0 },
-
-        // GSI for querying all posts by status
-        gsi1pk: { type: String, value: 'POST' },
-        gsi1sk: { type: String, value: 'STATUS#${published}#${postId}' },
       },
     },
 
     Comment: {
       key: {
-        pk: { type: String, value: 'POST#${postId}' },
-        sk: { type: String, value: 'COMMENT#${commentId}' },
+        PK: { type: String, value: 'POST#${postId}' },
+        SK: { type: String, value: 'COMMENT#${commentId}' },
+      },
+      index: {
+        // GSI for querying comments by user
+        GSI1PK: { type: String, value: 'USER#${username}' },
+        GSI1SK: { type: String, value: 'COMMENT#${commentId}' },
       },
       attributes: {
         postId: { type: String, required: true },
@@ -72,32 +80,28 @@ export const BlogSchema = {
         username: { type: String, required: true },
         content: { type: String, required: true },
         likes: { type: Number, default: 0 },
-
-        // GSI for querying comments by user
-        gsi1pk: { type: String, value: 'USER#${username}' },
-        gsi1sk: { type: String, value: 'COMMENT#${commentId}' },
       },
     },
 
     Tag: {
       key: {
-        pk: { type: String, value: 'POST#${postId}' },
-        sk: { type: String, value: 'TAG#${tag}' },
+        PK: { type: String, value: 'POST#${postId}' },
+        SK: { type: String, value: 'TAG#${tag}' },
+      },
+      index: {
+        // GSI for reverse lookup (tag → posts)
+        GSI1PK: { type: String, value: 'TAG#${tag}' },
+        GSI1SK: { type: String, value: 'POST#${postId}' },
       },
       attributes: {
         postId: { type: String, required: true },
         tag: { type: String, required: true },
-
-        // GSI for reverse lookup (tag → posts)
-        gsi1pk: { type: String, value: 'TAG#${tag}' },
-        gsi1sk: { type: String, value: 'POST#${postId}' },
       },
     },
   },
 
   params: {
     timestamps: true,
-    isoDates: true,
   },
 } as const;
 ```
@@ -105,7 +109,7 @@ export const BlogSchema = {
 ## Table Setup
 
 ```typescript
-import { Table } from 'dynatable';
+import { Table } from '@ftschopp/dynatable-core';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { BlogSchema } from './schema';
 
@@ -240,7 +244,7 @@ posts.forEach((post) => {
 async function getPublishedPosts(limit: number = 50) {
   return await table.entities.Post.query()
     .where((attr, op) =>
-      op.and(op.eq(attr.gsi1pk, 'POST'), op.beginsWith(attr.gsi1sk, 'STATUS#true'))
+      op.and(op.eq(attr.GSI1PK, 'POST'), op.beginsWith(attr.GSI1SK, 'STATUS#true'))
     )
     .useIndex('gsi1')
     .limit(limit)
@@ -302,19 +306,14 @@ async function likePost(username: string, postId: string) {
 
 ```typescript
 async function deletePost(username: string, postId: string) {
-  // Also delete all comments and tags
-  await table
-    .transactWrite()
-    .addDelete(
-      table.entities.Post.delete({
-        username,
-        postId,
-      }).dbParams()
-    )
-    .execute();
+  return await table.entities.Post.delete({
+    username,
+    postId,
+  }).execute();
 
-  // Delete comments and tags separately (they have different partition keys)
-  // This is a simplified version - in production, you'd query and delete them
+  // Note: comments and tags live under different partition keys.
+  // To clean them up, query each related model and delete the items
+  // in a transaction or batch as appropriate.
 }
 ```
 
@@ -357,7 +356,7 @@ comments.forEach((comment) => {
 ```typescript
 async function getUserComments(username: string, limit: number = 50) {
   return await table.entities.Comment.query()
-    .where((attr, op) => op.eq(attr.gsi1pk, `USER#${username}`))
+    .where((attr, op) => op.eq(attr.username, username))
     .useIndex('gsi1')
     .limit(limit)
     .scanIndexForward(false)
@@ -417,7 +416,7 @@ console.log(tags); // ['typescript', 'dynamodb', 'tutorial']
 ```typescript
 async function getPostsByTag(tag: string, limit: number = 20) {
   return await table.entities.Tag.query()
-    .where((attr, op) => op.eq(attr.gsi1pk, `TAG#${tag.toLowerCase()}`))
+    .where((attr, op) => op.eq(attr.tag, tag.toLowerCase()))
     .useIndex('gsi1')
     .limit(limit)
     .execute();
@@ -531,7 +530,7 @@ async function searchPosts(keyword: string) {
 async function getPaginatedPosts(limit: number = 20, lastKey?: any) {
   let query = table.entities.Post.query()
     .where((attr, op) =>
-      op.and(op.eq(attr.gsi1pk, 'POST'), op.beginsWith(attr.gsi1sk, 'STATUS#true'))
+      op.and(op.eq(attr.GSI1PK, 'POST'), op.beginsWith(attr.GSI1SK, 'STATUS#true'))
     )
     .useIndex('gsi1')
     .limit(limit)

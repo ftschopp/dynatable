@@ -183,14 +183,14 @@ export const migration: Migration = {
   schema: {
     Notification: {
       key: {
-        PK: 'USER#${userId}',
-        SK: 'NOTIFICATION#${notificationId}',
+        PK: { type: String, value: 'USER#${userId}' },
+        SK: { type: String, value: 'NOTIFICATION#${notificationId}' },
       },
       attributes: {
-        userId: { type: 'string', required: true },
-        notificationId: { type: 'string' },
-        message: { type: 'string', required: true },
-        read: { type: 'boolean', default: false },
+        userId: { type: String, required: true },
+        notificationId: { type: String, generate: 'ulid' },
+        message: { type: String, required: true },
+        read: { type: Boolean, default: false },
       },
     },
   },

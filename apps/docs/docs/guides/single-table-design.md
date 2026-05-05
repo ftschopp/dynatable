@@ -30,8 +30,8 @@ Instead of entity-specific keys, use generic names:
 ```typescript
 indexes: {
   primary: {
-    hash: "pk",   // Not "userId" or "customerId"
-    sort: "sk"    // Generic for all entities
+    hash: "PK",   // Not "userId" or "customerId"
+    sort: "SK"    // Generic for all entities
   }
 }
 ```
@@ -43,22 +43,22 @@ Use prefixes to namespace different entity types:
 ```typescript
 User: {
   key: {
-    pk: { type: String, value: "USER#${username}" },
-    sk: { type: String, value: "USER#${username}" }
+    PK: { type: String, value: "USER#${username}" },
+    SK: { type: String, value: "USER#${username}" }
   }
 }
 
 Post: {
   key: {
-    pk: { type: String, value: "USER#${username}" },
-    sk: { type: String, value: "POST#${postId}" }
+    PK: { type: String, value: "USER#${username}" },
+    SK: { type: String, value: "POST#${postId}" }
   }
 }
 
 Comment: {
   key: {
-    pk: { type: String, value: "POST#${postId}" },
-    sk: { type: String, value: "COMMENT#${commentId}" }
+    PK: { type: String, value: "POST#${postId}" },
+    SK: { type: String, value: "COMMENT#${commentId}" }
   }
 }
 ```
@@ -73,14 +73,14 @@ Store related entities together using the same partition key:
 
 ```typescript
 // User entity
-pk: 'USER#alice';
-sk: 'USER#alice';
+PK: 'USER#alice';
+SK: 'USER#alice';
 
 // User's posts
-pk: 'USER#alice';
-sk: 'POST#01HMQ...';
-sk: 'POST#01HMR...';
-sk: 'POST#01HMS...';
+PK: 'USER#alice';
+SK: 'POST#01HMQ...';
+SK: 'POST#01HMR...';
+SK: 'POST#01HMS...';
 ```
 
 **Query all posts by a user:**
@@ -97,17 +97,17 @@ Use hierarchical sort keys for nested relationships:
 
 ```typescript
 // Post
-pk: 'POST#123';
-sk: 'POST#123';
+PK: 'POST#123';
+SK: 'POST#123';
 
 // Comments on post
-pk: 'POST#123';
-sk: 'COMMENT#01HMQ...';
-sk: 'COMMENT#01HMR...';
+PK: 'POST#123';
+SK: 'COMMENT#01HMQ...';
+SK: 'COMMENT#01HMR...';
 
 // Reactions to comment
-pk: 'POST#123';
-sk: 'COMMENT#01HMQ...#REACTION#01HMS...';
+PK: 'POST#123';
+SK: 'COMMENT#01HMQ...#REACTION#01HMS...';
 ```
 
 ### Pattern 3: Many-to-Many Relationships
@@ -116,25 +116,25 @@ Use join entities to model many-to-many:
 
 ```typescript
 // User
-pk: 'USER#alice';
-sk: 'USER#alice';
+PK: 'USER#alice';
+SK: 'USER#alice';
 
 // Group
-pk: 'GROUP#developers';
-sk: 'GROUP#developers';
+PK: 'GROUP#developers';
+SK: 'GROUP#developers';
 
 // Membership (User → Group)
-pk: 'USER#alice';
-sk: 'MEMBER#GROUP#developers';
+PK: 'USER#alice';
+SK: 'MEMBER#GROUP#developers';
 
 // Membership (Group → User)
-pk: 'GROUP#developers';
-sk: 'MEMBER#USER#alice';
+PK: 'GROUP#developers';
+SK: 'MEMBER#USER#alice';
 ```
 
 ## Complete Example: Blog System
 
-Let's build a blog with users, posts, comments, and tags:
+Let's build a blog with users, posts, comments, and tags. GSI key templates live on each model's `index:` field, not inside `attributes:`:
 
 ```typescript
 const BlogSchema = {
@@ -143,12 +143,12 @@ const BlogSchema = {
 
   indexes: {
     primary: {
-      hash: 'pk',
-      sort: 'sk',
+      hash: 'PK',
+      sort: 'SK',
     },
     gsi1: {
-      hash: 'gsi1pk',
-      sort: 'gsi1sk',
+      hash: 'GSI1PK',
+      sort: 'GSI1SK',
     },
   },
 
@@ -156,8 +156,8 @@ const BlogSchema = {
     // User profile
     User: {
       key: {
-        pk: { type: String, value: 'USER#${username}' },
-        sk: { type: String, value: 'USER#${username}' },
+        PK: { type: String, value: 'USER#${username}' },
+        SK: { type: String, value: 'USER#${username}' },
       },
       attributes: {
         username: { type: String, required: true },
@@ -170,8 +170,13 @@ const BlogSchema = {
     // Posts by user
     Post: {
       key: {
-        pk: { type: String, value: 'USER#${username}' },
-        sk: { type: String, value: 'POST#${postId}' },
+        PK: { type: String, value: 'USER#${username}' },
+        SK: { type: String, value: 'POST#${postId}' },
+      },
+      index: {
+        // GSI for querying all posts by status
+        GSI1PK: { type: String, value: 'POST' },
+        GSI1SK: { type: String, value: 'STATUS#${published}#${postId}' },
       },
       attributes: {
         username: { type: String, required: true },
@@ -179,51 +184,48 @@ const BlogSchema = {
         title: { type: String, required: true },
         content: { type: String },
         published: { type: Boolean, default: false },
-
-        // GSI for querying all posts by status
-        gsi1pk: { type: String, value: 'POST' },
-        gsi1sk: { type: String, value: 'STATUS#${published}#${postId}' },
       },
     },
 
     // Comments on posts
     Comment: {
       key: {
-        pk: { type: String, value: 'POST#${postId}' },
-        sk: { type: String, value: 'COMMENT#${commentId}' },
+        PK: { type: String, value: 'POST#${postId}' },
+        SK: { type: String, value: 'COMMENT#${commentId}' },
+      },
+      index: {
+        // GSI for querying comments by user
+        GSI1PK: { type: String, value: 'USER#${username}' },
+        GSI1SK: { type: String, value: 'COMMENT#${commentId}' },
       },
       attributes: {
         postId: { type: String, required: true },
         commentId: { type: String, generate: 'ulid' },
         username: { type: String, required: true },
         content: { type: String, required: true },
-
-        // GSI for querying comments by user
-        gsi1pk: { type: String, value: 'USER#${username}' },
-        gsi1sk: { type: String, value: 'COMMENT#${commentId}' },
       },
     },
 
     // Tags for posts (many-to-many)
     PostTag: {
       key: {
-        pk: { type: String, value: 'POST#${postId}' },
-        sk: { type: String, value: 'TAG#${tag}' },
+        PK: { type: String, value: 'POST#${postId}' },
+        SK: { type: String, value: 'TAG#${tag}' },
+      },
+      index: {
+        // GSI for reverse lookup (tag → posts)
+        GSI1PK: { type: String, value: 'TAG#${tag}' },
+        GSI1SK: { type: String, value: 'POST#${postId}' },
       },
       attributes: {
         postId: { type: String, required: true },
         tag: { type: String, required: true },
-
-        // GSI for reverse lookup (tag → posts)
-        gsi1pk: { type: String, value: 'TAG#${tag}' },
-        gsi1sk: { type: String, value: 'POST#${postId}' },
       },
     },
   },
 
   params: {
     timestamps: true,
-    isoDates: true,
   },
 } as const;
 ```
@@ -261,7 +263,7 @@ const comments = await table.entities.Comment.query()
 ```typescript
 const publishedPosts = await table.entities.Post.query()
   .where((attr, op) =>
-    op.and(op.eq(attr.gsi1pk, 'POST'), op.beginsWith(attr.gsi1sk, 'STATUS#true'))
+    op.and(op.eq(attr.GSI1PK, 'POST'), op.beginsWith(attr.GSI1SK, 'STATUS#true'))
   )
   .useIndex('gsi1')
   .execute();
@@ -271,7 +273,7 @@ const publishedPosts = await table.entities.Post.query()
 
 ```typescript
 const userComments = await table.entities.Comment.query()
-  .where((attr, op) => op.eq(attr.gsi1pk, 'USER#alice'))
+  .where((attr, op) => op.eq(attr.username, 'alice'))
   .useIndex('gsi1')
   .execute();
 ```
@@ -280,7 +282,7 @@ const userComments = await table.entities.Comment.query()
 
 ```typescript
 const postsWithTag = await table.entities.PostTag.query()
-  .where((attr, op) => op.eq(attr.gsi1pk, 'TAG#typescript'))
+  .where((attr, op) => op.eq(attr.tag, 'typescript'))
   .useIndex('gsi1')
   .execute();
 ```
@@ -306,14 +308,14 @@ Always prefix keys with entity type:
 
 ```typescript
 // Good
-pk: 'USER#${username}';
-pk: 'POST#${postId}';
-pk: 'COMMENT#${commentId}';
+PK: 'USER#${username}';
+PK: 'POST#${postId}';
+PK: 'COMMENT#${commentId}';
 
 // Bad - inconsistent
-pk: '${username}';
-pk: 'post_${postId}';
-pk: 'Comment-${commentId}';
+PK: '${username}';
+PK: 'post_${postId}';
+PK: 'Comment-${commentId}';
 ```
 
 ### 3. Leverage Sort Key Ordering
@@ -322,56 +324,44 @@ DynamoDB sorts items by sort key. Use this for natural ordering:
 
 ```typescript
 // Time-sorted posts (ULID sorts by time)
-sk: 'POST#${postId}'; // ULID auto-sorts by creation time
+SK: 'POST#${postId}'; // ULID auto-sorts by creation time
 
 // Explicitly sorted
-sk: 'POST#${createdAt}#${postId}';
+SK: 'POST#${createdAt}#${postId}';
 
 // Status and time
-sk: 'STATUS#${published}#${createdAt}';
+SK: 'STATUS#${published}#${createdAt}';
 ```
 
 ### 4. Design GSIs for Alternative Access Patterns
 
-Use GSIs for queries that can't use the primary key:
+Use GSIs for queries that can't use the primary key. Declare them on the model's `index:`:
 
 ```typescript
 // Primary: Query posts by user
-pk: 'USER#alice';
-sk: 'POST#${postId}';
+key: {
+  PK: { type: String, value: 'USER#${username}' },
+  SK: { type: String, value: 'POST#${postId}' },
+}
 
 // GSI1: Query posts by status
-gsi1pk: 'POST';
-gsi1sk: 'STATUS#${published}#${createdAt}';
+index: {
+  GSI1PK: { type: String, value: 'POST' },
+  GSI1SK: { type: String, value: 'STATUS#${published}#${createdAt}' },
+}
 
-// GSI2: Query posts by tag
-gsi2pk: 'TAG#${tag}';
-gsi2sk: 'POST#${postId}';
+// GSI2: Query posts by tag (on a separate model — see PostTag above)
 ```
 
 ### 5. Handle Many-to-Many with Dual Writes
 
-For many-to-many, write join records in both directions:
+For many-to-many, design both directions into the same join entity using `key:` (for the forward lookup) and `index:` (for the reverse lookup). The `PostTag` model above shows this pattern — a single put writes both lookups:
 
 ```typescript
-await table
-  .transactWrite()
-  .addPut(
-    table.entities.PostTag.put({
-      postId: '123',
-      tag: 'typescript',
-    }).dbParams()
-  )
-  .addPut(
-    table.entities.PostTag.put({
-      postId: '123',
-      tag: 'typescript',
-      // Swap for reverse lookup
-      gsi1pk: 'TAG#typescript',
-      gsi1sk: 'POST#123',
-    }).dbParams()
-  )
-  .execute();
+await table.entities.PostTag.put({
+  postId: '123',
+  tag: 'typescript',
+}).execute();
 ```
 
 ### 6. Use Composite Sort Keys
@@ -383,9 +373,9 @@ Combine multiple attributes in sort keys for hierarchical queries:
 // - All items in POST#123
 // - All comments: POST#123 beginsWith COMMENT#
 // - All reactions: POST#123 beginsWith REACTION#
-sk: 'COMMENT#${commentId}';
-sk: 'REACTION#${reactionId}';
-sk: 'METADATA';
+SK: 'COMMENT#${commentId}';
+SK: 'REACTION#${reactionId}';
+SK: 'METADATA';
 ```
 
 ## Anti-Patterns to Avoid
@@ -411,7 +401,7 @@ Each GSI doubles your write costs. Design carefully:
 ```typescript
 // ❌ Bad - too many GSIs
 indexes: {
-  primary: { hash: "pk", sort: "sk" },
+  primary: { hash: "PK", sort: "SK" },
   gsi1: { /* ... */ },
   gsi2: { /* ... */ },
   gsi3: { /* ... */ },
@@ -421,8 +411,8 @@ indexes: {
 
 // ✅ Good - minimal GSIs with composite keys
 indexes: {
-  primary: { hash: "pk", sort: "sk" },
-  gsi1: { hash: "gsi1pk", sort: "gsi1sk" },  // Handles multiple patterns
+  primary: { hash: "PK", sort: "SK" },
+  gsi1: { hash: "GSI1PK", sort: "GSI1SK" },  // Handles multiple patterns
 }
 ```
 
@@ -432,12 +422,12 @@ Distribute writes across partition keys:
 
 ```typescript
 // ❌ Bad - all writes to same partition
-pk: 'GLOBAL#POSTS';
-sk: 'POST#${postId}';
+PK: 'GLOBAL#POSTS';
+SK: 'POST#${postId}';
 
 // ✅ Good - distributed partitions
-pk: 'USER#${username}';
-sk: 'POST#${postId}';
+PK: 'USER#${username}';
+SK: 'POST#${postId}';
 ```
 
 ## Migration from Multi-Table
@@ -445,7 +435,7 @@ sk: 'POST#${postId}';
 If you're migrating from multiple tables:
 
 1. **Map Your Access Patterns**: List all current queries
-2. **Design Generic Keys**: Create pk/sk structure
+2. **Design Generic Keys**: Create PK/SK structure
 3. **Add Entity Prefixes**: Namespace each entity type
 4. **Plan GSIs**: Design for alternative access patterns
 5. **Test Incrementally**: Migrate one entity at a time
@@ -454,24 +444,24 @@ If you're migrating from multiple tables:
 
 ```typescript
 // Customer
-pk: 'CUSTOMER#${customerId}';
-sk: 'CUSTOMER#${customerId}';
+PK: 'CUSTOMER#${customerId}';
+SK: 'CUSTOMER#${customerId}';
 
 // Orders by customer
-pk: 'CUSTOMER#${customerId}';
-sk: 'ORDER#${orderId}';
+PK: 'CUSTOMER#${customerId}';
+SK: 'ORDER#${orderId}';
 
 // Order items
-pk: 'ORDER#${orderId}';
-sk: 'ITEM#${productId}';
+PK: 'ORDER#${orderId}';
+SK: 'ITEM#${productId}';
 
 // Products
-pk: 'PRODUCT#${productId}';
-sk: 'PRODUCT#${productId}';
+PK: 'PRODUCT#${productId}';
+SK: 'PRODUCT#${productId}';
 
 // Inventory by location
-pk: 'PRODUCT#${productId}';
-sk: 'INVENTORY#${location}';
+PK: 'PRODUCT#${productId}';
+SK: 'INVENTORY#${location}';
 ```
 
 ## Next Steps

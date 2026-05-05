@@ -37,25 +37,27 @@ Define your table's primary and secondary indexes:
 ```typescript
 indexes: {
   primary: {
-    hash: "pk",      // Partition key
-    sort: "sk"       // Sort key (optional)
+    hash: "PK",        // Partition key column name
+    sort: "SK"         // Sort key column name (optional)
   },
   gsi1: {
-    hash: "gsi1pk",
-    sort: "gsi1sk"
+    hash: "GSI1PK",
+    sort: "GSI1SK"
   }
 }
 ```
 
+The `hash` and `sort` strings are the actual DynamoDB attribute names used for the index. They must match the keys you declare on each model under `key:` (and `index:` for GSIs).
+
 ### Primary Index
 
-Every table requires a primary index:
+Every table requires a primary index. The keys are uppercase by convention and **must** be named `PK` and `SK` on each model:
 
 ```typescript
 indexes: {
   primary: {
-    hash: "pk",      // Partition key name
-    sort: "sk"       // Sort key name (optional)
+    hash: "PK",
+    sort: "SK"
   }
 }
 ```
@@ -67,16 +69,12 @@ Add GSIs for alternative access patterns:
 ```typescript
 indexes: {
   primary: {
-    hash: "pk",
-    sort: "sk"
+    hash: "PK",
+    sort: "SK"
   },
-  byEmail: {
-    hash: "email",
-    sort: "createdAt"
-  },
-  byStatus: {
-    hash: "status",
-    sort: "updatedAt"
+  gsi1: {
+    hash: "GSI1PK",
+    sort: "GSI1SK"
   }
 }
 ```
@@ -100,16 +98,16 @@ models: {
 
 ### Key Definition
 
-Every model must define how its keys are constructed:
+Every model must define `PK` and `SK` (uppercase) under `key:`:
 
 ```typescript
 User: {
   key: {
-    pk: {
+    PK: {
       type: String,
       value: "USER#${username}"  // Template using attributes
     },
-    sk: {
+    SK: {
       type: String,
       value: "USER#${username}"
     }
@@ -129,8 +127,8 @@ User: {
 
 ```typescript
 key: {
-  pk: { type: String, value: "USER#${userId}" },
-  sk: { type: String, value: "USER#${userId}" }
+  PK: { type: String, value: "USER#${userId}" },
+  SK: { type: String, value: "USER#${userId}" }
 }
 ```
 
@@ -138,8 +136,31 @@ key: {
 
 ```typescript
 key: {
-  pk: { type: String, value: "USER#${username}" },
-  sk: { type: String, value: "POST#${postId}" }
+  PK: { type: String, value: "USER#${username}" },
+  SK: { type: String, value: "POST#${postId}" }
+}
+```
+
+### Index Keys (GSI)
+
+GSI key templates go on the model's `index:` field, not inside `attributes:`. The keys here must match the GSI column names declared in `indexes`:
+
+```typescript
+Post: {
+  key: {
+    PK: { type: String, value: "USER#${username}" },
+    SK: { type: String, value: "POST#${postId}" },
+  },
+  index: {
+    GSI1PK: { type: String, value: "POST" },
+    GSI1SK: { type: String, value: "STATUS#${published}#${postId}" },
+  },
+  attributes: {
+    username: { type: String, required: true },
+    postId: { type: String, generate: "ulid" },
+    title: { type: String, required: true },
+    published: { type: Boolean, default: false },
+  },
 }
 ```
 
@@ -322,15 +343,14 @@ Configure global behaviors:
 
 ```typescript
 params: {
-  timestamps: true,     // Add createdAt/updatedAt
-  isoDates: true,       // Store dates as ISO strings
-  typeField: "_type"    // Entity type field name
+  timestamps: true,         // Add createdAt / updatedAt
+  cleanInternalKeys: true,  // Strip PK/SK/_type from returned items
 }
 ```
 
 ### timestamps
 
-Automatically manage `createdAt` and `updatedAt`:
+Automatically manage `createdAt` and `updatedAt`. When enabled, both fields are stored as ISO 8601 strings:
 
 ```typescript
 params: {
@@ -338,35 +358,13 @@ params: {
 }
 
 // When enabled, all entities get:
-// - createdAt: set on creation
-// - updatedAt: updated on every change
+// - createdAt: set on creation, ISO string (e.g. "2024-01-15T10:00:00.000Z")
+// - updatedAt: updated on every change, ISO string
 ```
 
-### isoDates
+### cleanInternalKeys
 
-Store dates as ISO strings instead of timestamps:
-
-```typescript
-params: {
-  isoDates: true; // Store as "2024-01-15T10:00:00.000Z"
-}
-
-// When false (default):
-// Store as numbers: 1705315200000
-```
-
-### typeField
-
-Customize the entity type field name:
-
-```typescript
-params: {
-  typeField: '_type'; // Default
-}
-
-// In stored items:
-// { _type: "User", username: "alice", ... }
-```
+When set to `true`, Dynatable strips internal keys (`PK`, `SK`, `_type`) from items returned by reads. Use this if you want a clean shape that matches your business attributes only.
 
 ## Complete Schema Example
 
@@ -379,20 +377,24 @@ export const BlogSchema = {
 
   indexes: {
     primary: {
-      hash: 'pk',
-      sort: 'sk',
+      hash: 'PK',
+      sort: 'SK',
     },
-    byEmail: {
-      hash: 'email',
-      sort: 'createdAt',
+    gsi1: {
+      hash: 'GSI1PK',
+      sort: 'GSI1SK',
     },
   },
 
   models: {
     User: {
       key: {
-        pk: { type: String, value: 'USER#${username}' },
-        sk: { type: String, value: 'USER#${username}' },
+        PK: { type: String, value: 'USER#${username}' },
+        SK: { type: String, value: 'USER#${username}' },
+      },
+      index: {
+        GSI1PK: { type: String, value: 'EMAIL#${email}' },
+        GSI1SK: { type: String, value: 'EMAIL#${email}' },
       },
       attributes: {
         username: { type: String, required: true },
@@ -402,14 +404,14 @@ export const BlogSchema = {
         age: { type: Number },
         isActive: { type: Boolean, default: true },
         role: { type: String, default: 'user' },
-        tags: { type: Array },
+        tags: { type: Array, items: { type: String } },
       },
     },
 
     Post: {
       key: {
-        pk: { type: String, value: 'USER#${username}' },
-        sk: { type: String, value: 'POST#${postId}' },
+        PK: { type: String, value: 'USER#${username}' },
+        SK: { type: String, value: 'POST#${postId}' },
       },
       attributes: {
         username: { type: String, required: true },
@@ -418,14 +420,14 @@ export const BlogSchema = {
         content: { type: String },
         published: { type: Boolean, default: false },
         views: { type: Number, default: 0 },
-        tags: { type: Set, items: String },
+        tags: { type: Array, items: { type: String } },
       },
     },
 
     Comment: {
       key: {
-        pk: { type: String, value: 'POST#${postId}' },
-        sk: { type: String, value: 'COMMENT#${commentId}' },
+        PK: { type: String, value: 'POST#${postId}' },
+        SK: { type: String, value: 'COMMENT#${commentId}' },
       },
       attributes: {
         postId: { type: String, required: true },
@@ -439,7 +441,6 @@ export const BlogSchema = {
 
   params: {
     timestamps: true,
-    isoDates: true,
   },
 } as const;
 ```
@@ -458,7 +459,7 @@ user.username; // string
 user.email; // string
 user.age; // number | undefined
 user.isActive; // boolean
-user.createdAt; // Date
+user.createdAt; // string (ISO 8601, when params.timestamps is true)
 ```
 
 ### Extracting Entity and Item Types
@@ -474,6 +475,7 @@ import type {
 
 type UserEntity = InferModelFromSchema<typeof BlogSchema, 'User'>;
 // createdAt / updatedAt are included automatically when params.timestamps = true
+// Both are typed as string (ISO 8601)
 
 type UserInput = InferInputFromSchema<typeof BlogSchema, 'User'>;
 // generated fields (ulid/uuid) and timestamps are excluded
@@ -489,16 +491,17 @@ type StoryFrame = ArrayItem<StoryEntity['frames']>;
 
 ## Schema Validation
 
-Schemas are validated at runtime using Zod:
+Schemas are validated at runtime using Zod. Validation enforces the declared types (string, number, boolean, etc.) and required fields:
 
 ```typescript
 // This will fail validation
 await table.entities.User.put({
   username: 'alice',
-  email: 'not-an-email', // Invalid email format
-  age: '25', // Should be number, not string
+  age: '25', // Error: Expected number, got string
 }).execute();
 ```
+
+For richer validation (email format, length constraints, regex, etc.), validate the input with your own Zod schemas before calling `.put()` / `.update()`.
 
 ## Next Steps
 

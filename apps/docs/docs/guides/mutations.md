@@ -142,17 +142,6 @@ await table.entities.User.update({
   .execute();
 ```
 
-Add to a set:
-
-```typescript
-await table.entities.Post.update({
-  username: 'alice',
-  postId: 'post123',
-})
-  .add('tags', new Set(['typescript', 'tutorial']))
-  .execute();
-```
-
 ### Remove Attributes
 
 ```typescript
@@ -161,17 +150,6 @@ await table.entities.User.update({
 })
   .remove('bio')
   .remove('website')
-  .execute();
-```
-
-### Delete from Set
-
-```typescript
-await table.entities.Post.update({
-  username: 'alice',
-  postId: 'post123',
-})
-  .delete('tags', new Set(['outdated']))
   .execute();
 ```
 
@@ -324,9 +302,7 @@ await table.entities.User.update({
 
 ## Batch Write
 
-Perform multiple put/delete operations in a single request.
-
-### Batch Put
+Perform multiple put operations in a single request. Each entity exposes `batchWrite(items)` which issues a `BatchWriteItem` containing only put requests:
 
 ```typescript
 await table.entities.User.batchWrite([
@@ -336,43 +312,14 @@ await table.entities.User.batchWrite([
 ]).execute();
 ```
 
-### Batch Delete
-
-```typescript
-await table.entities.Post.batchDelete([
-  { username: 'alice', postId: 'post1' },
-  { username: 'alice', postId: 'post2' },
-  { username: 'alice', postId: 'post3' },
-]).execute();
-```
-
-### Mixed Batch Operations
-
-```typescript
-// Note: Use DynamoDB's batchWrite directly for mixed operations
-await table
-  .batchWrite()
-  .addPut(
-    table.entities.User.put({
-      username: 'alice',
-      name: 'Alice',
-    }).dbParams()
-  )
-  .addDelete(
-    table.entities.Post.delete({
-      username: 'bob',
-      postId: 'post1',
-    }).dbParams()
-  )
-  .execute();
-```
+For deletes or for mixing puts and deletes atomically, use a transaction (see below). DynamoDB's native `BatchWriteItem` does not support condition expressions and cannot be combined with conditional checks — if you need atomicity or conditions, use `transactWrite()`.
 
 :::note
 Batch operations:
 
 - Max 25 items per request
 - Max 16 MB total data
-- No conditional operations
+- Puts only via `entities.X.batchWrite()` (no conditional operations)
 - Partial failures possible
   :::
 
@@ -509,8 +456,8 @@ const user = await table.entities.User.put({
   name: 'Alice Smith',
 }).execute();
 
-console.log(user.createdAt); // 2024-01-15T10:00:00.000Z
-console.log(user.updatedAt); // 2024-01-15T10:00:00.000Z
+console.log(user.createdAt); // "2024-01-15T10:00:00.000Z" (ISO string)
+console.log(user.updatedAt); // "2024-01-15T10:00:00.000Z" (ISO string)
 
 // Update - only updates updatedAt
 await table.entities.User.update({

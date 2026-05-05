@@ -54,7 +54,6 @@ const schema = {
   },
   params: {
     timestamps: true,
-    isoDates: true,
   },
 } as const;
 
@@ -148,8 +147,7 @@ const schema = {
   },
 
   params: {
-    timestamps: true, // Auto createdAt/updatedAt
-    isoDates: true, // Use ISO 8601 dates
+    timestamps: true, // Auto createdAt/updatedAt as ISO 8601 strings
     cleanInternalKeys: false, // Hide PK/SK from results
   },
 } as const;

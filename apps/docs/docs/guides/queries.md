@@ -384,7 +384,7 @@ You can also use raw GSI key names with pre-formatted values if you prefer:
 ```typescript
 const publishedPosts = await table.entities.Post.query()
   .where((attr, op) =>
-    op.and(op.eq(attr.gsi1pk, 'POST'), op.beginsWith(attr.gsi1sk, 'STATUS#published'))
+    op.and(op.eq(attr.GSI1PK, 'POST'), op.beginsWith(attr.GSI1SK, 'STATUS#published'))
   )
   .useIndex('gsi1')
   .execute();
@@ -401,7 +401,7 @@ const posts = await table.entities.Post.query()
 
 ## Batch Get
 
-Retrieve multiple items efficiently:
+Retrieve multiple items efficiently. `batchGet().execute()` returns a flat array of items:
 
 ```typescript
 const users = await table.entities.User.batchGet([
@@ -422,6 +422,7 @@ BatchGet:
 - Max 16 MB total data
 - Results may be unordered
 - May return partial results
+- Result shape: `Model[]`
   :::
 
 ## Scan Operations
