@@ -76,6 +76,30 @@ describe('UpdateBuilder', () => {
       });
     });
 
+    test('should build params with single-property object whose key is "name"', () => {
+      const key: Partial<TestModel> = { pk: 'USER#1', sk: 'USER#1' };
+      const params = createUpdateBuilder<TestModel>(tableName, key, client)
+        .set({ name: 'Ministro Pistarini' })
+        .dbParams();
+
+      expect(params.UpdateExpression).toBe('SET #name = :name_0');
+      expect(params.ExpressionAttributeNames).toEqual({ '#name': 'name' });
+      expect(params.ExpressionAttributeValues).toEqual({
+        ':name_0': 'Ministro Pistarini',
+      });
+    });
+
+    test('should build params with single-property object whose key is not "name"', () => {
+      const key: Partial<TestModel> = { pk: 'USER#1', sk: 'USER#1' };
+      const params = createUpdateBuilder<TestModel>(tableName, key, client)
+        .set({ age: 30 })
+        .dbParams();
+
+      expect(params.UpdateExpression).toBe('SET #age = :age_0');
+      expect(params.ExpressionAttributeNames).toEqual({ '#age': 'age' });
+      expect(params.ExpressionAttributeValues).toEqual({ ':age_0': 30 });
+    });
+
     test('should combine single and multiple SET operations', () => {
       const key: Partial<TestModel> = { pk: 'USER#1', sk: 'USER#1' };
       const params = createUpdateBuilder<TestModel>(tableName, key, client)
@@ -341,6 +365,179 @@ describe('UpdateBuilder', () => {
       expect(builder1.dbParams().UpdateExpression).toBeUndefined();
       expect(builder2.dbParams().UpdateExpression).toBe('SET #name = :name_0');
       expect(builder3.dbParams().UpdateExpression).toBe('SET #name = :name_0, #age = :age_1');
+    });
+  });
+
+  describe('Secondary-index recomputation (indexContext)', () => {
+    interface PersonnelModel {
+      id: string;
+      airportId: string;
+      firstName: string;
+      lastName: string;
+      role: string;
+    }
+
+    const personnelModel = {
+      key: {
+        PK: { type: String, value: 'PERSON#${id}' },
+        SK: { type: String, value: 'PROFILE' },
+      },
+      index: {
+        GSI1PK: { type: String, value: 'AIRPORT#${airportId}' },
+        GSI1SK: { type: String, value: 'PERSON#${lastName}#${firstName}' },
+      },
+      attributes: {
+        id: { type: String, required: true },
+        airportId: { type: String, required: true },
+        firstName: { type: String, required: true },
+        lastName: { type: String, required: true },
+        role: { type: String },
+      },
+    } as const;
+
+    test('does nothing when no .set() field appears in any index template', () => {
+      const params = createUpdateBuilder<PersonnelModel>(
+        tableName,
+        { id: '1' } as Partial<PersonnelModel>,
+        client,
+        [],
+        { set: [], remove: [], add: [], delete: [] },
+        'NONE',
+        0,
+        false,
+        undefined,
+        { model: personnelModel as any, keyVars: { id: '1' } }
+      )
+        .set('role', 'pilot')
+        .dbParams();
+
+      expect(params.UpdateExpression).toBe('SET #role = :role_0');
+      expect(params.ExpressionAttributeNames).toEqual({ '#role': 'role' });
+    });
+
+    test('recomputes affected index when all template vars are present in updates', () => {
+      const params = createUpdateBuilder<PersonnelModel>(
+        tableName,
+        { id: '1' } as Partial<PersonnelModel>,
+        client,
+        [],
+        { set: [], remove: [], add: [], delete: [] },
+        'NONE',
+        0,
+        false,
+        undefined,
+        { model: personnelModel as any, keyVars: { id: '1' } }
+      )
+        .set({ firstName: 'Ada', lastName: 'Lovelace' })
+        .dbParams();
+
+      // GSI1SK depends on lastName + firstName — both supplied → recomputed.
+      // GSI1PK depends on airportId — untouched, no recompute.
+      expect(params.UpdateExpression).toBe(
+        'SET #firstName = :firstName_0, #lastName = :lastName_1, #GSI1SK = :GSI1SK_2'
+      );
+      expect(params.ExpressionAttributeValues).toMatchObject({
+        ':firstName_0': 'Ada',
+        ':lastName_1': 'Lovelace',
+        ':GSI1SK_2': 'PERSON#Lovelace#Ada',
+      });
+    });
+
+    test('throws when an affected index template references a field not in updates or key', () => {
+      const builder = createUpdateBuilder<PersonnelModel>(
+        tableName,
+        { id: '1' } as Partial<PersonnelModel>,
+        client,
+        [],
+        { set: [], remove: [], add: [], delete: [] },
+        'NONE',
+        0,
+        false,
+        undefined,
+        { model: personnelModel as any, keyVars: { id: '1' } }
+      ).set({ lastName: 'Lovelace' });
+
+      // GSI1SK template = "PERSON#${lastName}#${firstName}" — firstName is missing.
+      expect(() => builder.dbParams()).toThrow(/firstName/);
+      expect(() => builder.dbParams()).toThrow(/GSI1SK/);
+    });
+
+    test('uses primary-key template vars when resolving index templates', () => {
+      const userModel = {
+        key: {
+          PK: { type: String, value: 'USER#${username}' },
+          SK: { type: String, value: 'USER#${username}' },
+        },
+        index: {
+          GSI1PK: { type: String, value: 'USER#${username}#STATUS#${status}' },
+        },
+        attributes: {
+          username: { type: String, required: true },
+          status: { type: String, required: true },
+        },
+      } as const;
+
+      const params = createUpdateBuilder<{ username: string; status: string }>(
+        tableName,
+        { username: 'jane' } as any,
+        client,
+        [],
+        { set: [], remove: [], add: [], delete: [] },
+        'NONE',
+        0,
+        false,
+        undefined,
+        { model: userModel as any, keyVars: { username: 'jane' } }
+      )
+        .set('status', 'active')
+        .dbParams();
+
+      expect(params.UpdateExpression).toBe(
+        'SET #status = :status_0, #GSI1PK = :GSI1PK_1'
+      );
+      expect(params.ExpressionAttributeValues).toMatchObject({
+        ':status_0': 'active',
+        ':GSI1PK_1': 'USER#jane#STATUS#active',
+      });
+    });
+
+    test('accumulates set inputs across chained calls before resolving', () => {
+      const params = createUpdateBuilder<PersonnelModel>(
+        tableName,
+        { id: '1' } as Partial<PersonnelModel>,
+        client,
+        [],
+        { set: [], remove: [], add: [], delete: [] },
+        'NONE',
+        0,
+        false,
+        undefined,
+        { model: personnelModel as any, keyVars: { id: '1' } }
+      )
+        .set('lastName', 'Lovelace')
+        .set('firstName', 'Ada')
+        .dbParams();
+
+      // Each individual .set() was missing one var, but the accumulator has both
+      // by the time dbParams() runs.
+      expect(params.UpdateExpression).toBe(
+        'SET #lastName = :lastName_0, #firstName = :firstName_1, #GSI1SK = :GSI1SK_2'
+      );
+      expect(params.ExpressionAttributeValues).toMatchObject({
+        ':GSI1SK_2': 'PERSON#Lovelace#Ada',
+      });
+    });
+
+    test('does nothing when indexContext is omitted (backwards-compatible default)', () => {
+      const params = createUpdateBuilder<PersonnelModel>(
+        tableName,
+        { id: '1' } as Partial<PersonnelModel>,
+        client
+      )
+        .set({ lastName: 'Lovelace' })
+        .dbParams();
+
+      expect(params.UpdateExpression).toBe('SET #lastName = :lastName_0');
     });
   });
 

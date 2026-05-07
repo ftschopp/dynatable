@@ -250,15 +250,20 @@ describe('Should test dbParams function builder', () => {
       .where((attr, op) => op.eq(attr.username, 'juanca'))
       .dbParams();
 
-    // After query builder fix: username -> pk, and value gets template applied
+    // After query builder fix: username -> pk, and value gets template applied.
+    // Entity API auto-injects a `_type = <modelName>` filter so that queries on
+    // shared partition keys don't return items of other entities.
     expect(params).toEqual({
       TableName: 'InstagramClone',
       KeyConditionExpression: '#PK = :username_0',
+      FilterExpression: '#_type = :_type',
       ExpressionAttributeNames: {
         '#PK': 'PK',
+        '#_type': '_type',
       },
       ExpressionAttributeValues: {
         ':username_0': 'UP#juanca', // Template applied: UP#${username}
+        ':_type': 'Photo',
       },
     });
 
@@ -266,6 +271,7 @@ describe('Should test dbParams function builder', () => {
     expect(params.KeyConditionExpression).toMatch(/#PK = :username_\d+/);
     expect(params.ExpressionAttributeNames).toEqual({
       '#PK': 'PK',
+      '#_type': '_type',
     });
     expect(Object.values(params.ExpressionAttributeValues || {})).toContain('UP#juanca');
   });
@@ -278,23 +284,27 @@ describe('Should test dbParams function builder', () => {
     expect(params).toEqual({
       TableName: 'InstagramClone',
       KeyConditionExpression: '#PK = :username_0',
-      FilterExpression: '#likesCount > :likesCount_1',
+      FilterExpression: '(#likesCount > :likesCount_1) AND (#_type = :_type)',
       ExpressionAttributeNames: {
         '#likesCount': 'likesCount',
         '#PK': 'PK',
+        '#_type': '_type',
       },
       ExpressionAttributeValues: {
         ':likesCount_1': 0,
         ':username_0': 'UP#juanca',
+        ':_type': 'Photo',
       },
     });
 
     expect(params.TableName).toBe('InstagramClone');
     expect(params.KeyConditionExpression).toMatch(/#PK = :username_\d+/);
     expect(params.FilterExpression).toMatch(/#likesCount > :likesCount_\d+/);
+    expect(params.FilterExpression).toMatch(/#_type = :_type/);
     expect(params.ExpressionAttributeNames).toEqual({
       '#PK': 'PK',
       '#likesCount': 'likesCount',
+      '#_type': '_type',
     });
     expect(Object.values(params.ExpressionAttributeValues || {})).toContain('UP#juanca');
     expect(Object.values(params.ExpressionAttributeValues || {})).toContain(0);
@@ -310,11 +320,14 @@ describe('Should test dbParams function builder', () => {
     expect(params).toEqual({
       TableName: 'InstagramClone',
       KeyConditionExpression: '#PK = :username_0',
+      FilterExpression: '#_type = :_type',
       ExpressionAttributeNames: {
         '#PK': 'PK',
+        '#_type': '_type',
       },
       ExpressionAttributeValues: {
         ':username_0': 'UP#juanca',
+        ':_type': 'Photo',
       },
       Limit: 10,
       ScanIndexForward: false,
@@ -344,16 +357,19 @@ describe('Should test dbParams function builder', () => {
     expect(params).toEqual({
       TableName: 'InstagramClone',
       KeyConditionExpression: '#PK = :photoId_0',
+      FilterExpression: '#_type = :_type',
       ExpressionAttributeNames: {
         '#PK': 'PK',
+        '#_type': '_type',
       },
       ExpressionAttributeValues: {
         ':photoId_0': 'PL#photo123', // Template applied: PL#${photoId}
+        ':_type': 'Like',
       },
     });
     expect(params.TableName).toBe('InstagramClone');
     expect(params.KeyConditionExpression).toMatch(/#PK = :photoId_\d+/);
-    expect(params.ExpressionAttributeNames).toEqual({ '#PK': 'PK' });
+    expect(params.ExpressionAttributeNames).toEqual({ '#PK': 'PK', '#_type': '_type' });
     expect(Object.values(params.ExpressionAttributeValues || {})).toContain('PL#photo123');
   });
 
@@ -372,10 +388,12 @@ describe('Should test dbParams function builder', () => {
     expect(params.FilterExpression).toMatch(
       /\(#likesCount > :likesCount_\d+\) OR \(#commentCount > :commentCount_\d+\)/
     );
+    expect(params.FilterExpression).toMatch(/#_type = :_type/);
     expect(params.ExpressionAttributeNames).toEqual({
       '#PK': 'PK',
       '#likesCount': 'likesCount',
       '#commentCount': 'commentCount',
+      '#_type': '_type',
     });
     expect(Object.values(params.ExpressionAttributeValues || {})).toContain('UP#juanca');
     expect(Object.values(params.ExpressionAttributeValues || {})).toContain(100);
@@ -401,10 +419,12 @@ describe('Should test dbParams function builder', () => {
       /\(#likesCount > :likesCount_\d+\) AND \(#commentCount < :commentCount_\d+\)/
     );
     expect(params.FilterExpression).toMatch(/OR/);
+    expect(params.FilterExpression).toMatch(/#_type = :_type/);
     expect(params.ExpressionAttributeNames).toEqual({
       '#PK': 'PK',
       '#likesCount': 'likesCount',
       '#commentCount': 'commentCount',
+      '#_type': '_type',
     });
     expect(Object.values(params.ExpressionAttributeValues || {})).toContain('UP#juanca');
     expect(Object.values(params.ExpressionAttributeValues || {})).toContain(100);

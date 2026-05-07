@@ -24,6 +24,7 @@ type QueryState<Model> = {
   consistentReadEnabled?: boolean;
   exclusiveStartKey?: Record<string, any>;
   logger?: DynamoDBLogger;
+  entityType?: string;
 };
 
 /**
@@ -60,11 +61,32 @@ function getKeyNameForAttribute(
 }
 
 /**
- * Apply key template to transform attribute value to key value
- * e.g., applyKeyTemplate("UP#${username}", "username", "johndoe") -> "UP#johndoe"
+ * Apply key template to transform an attribute value to its key value.
+ *
+ * For multi-variable templates (e.g. "RES#${category}#${code}") we can only fill
+ * the variable matching `fieldName`. For `beginsWith` queries we truncate the
+ * result at the first remaining `${...}` placeholder so the prefix is usable.
+ * For other operators an exact match is required, so we throw a clear error.
  */
-function applyKeyTemplate(template: string, fieldName: string, fieldValue: any): string {
-  return template.replace(`\${${fieldName}}`, fieldValue);
+function applyKeyTemplate(
+  template: string,
+  fieldName: string,
+  fieldValue: any,
+  keyOperator?: string
+): string {
+  const substituted = template.replace(`\${${fieldName}}`, String(fieldValue));
+  const nextPlaceholder = substituted.indexOf('${');
+  if (nextPlaceholder === -1) return substituted;
+
+  if (keyOperator === 'beginsWith') {
+    return substituted.slice(0, nextPlaceholder);
+  }
+
+  throw new Error(
+    `Cannot use operator "${keyOperator ?? 'unknown'}" on key template "${template}" ` +
+      `with only "${fieldName}" provided — the template still contains unfilled ` +
+      `variable(s). Use beginsWith for prefix queries on composite keys.`
+  );
 }
 
 /**
@@ -116,7 +138,12 @@ function separateConditions(
         if (cond.values) {
           for (const [valuePlaceholder, value] of Object.entries(cond.values)) {
             // Apply the key template to transform the value
-            const transformedValue = applyKeyTemplate(keyInfo.template, fieldName, value);
+            const transformedValue = applyKeyTemplate(
+              keyInfo.template,
+              fieldName,
+              value,
+              cond.keyOperator
+            );
             newValues[valuePlaceholder] = transformedValue;
           }
         }
@@ -239,17 +266,29 @@ function createQueryExecutor<Model>(state: QueryState<Model>): QueryExecutor<Mod
       // Build KeyConditionExpression (simple AND)
       const keyExpr = buildSimpleAndExpression(keyConditions);
 
+      // Auto-inject an entity-type filter so query() only returns items
+      // belonging to this entity (single-table designs share PKs across
+      // entities, especially on GSIs).
+      const allFilters = [...filterConditions];
+      if (state.entityType) {
+        allFilters.push({
+          expression: '#_type = :_type',
+          names: { '#_type': '_type' },
+          values: { ':_type': state.entityType },
+        });
+      }
+
       // Build FilterExpression (can be complex with OR, NOT, etc.)
       let filterExpr = { expression: '', names: {}, values: {} };
-      if (filterConditions.length > 0) {
-        if (filterConditions.length === 1 && filterConditions[0]) {
-          filterExpr = buildExpression(filterConditions[0]);
+      if (allFilters.length > 0) {
+        if (allFilters.length === 1 && allFilters[0]) {
+          filterExpr = buildExpression(allFilters[0]);
         } else {
           // Multiple filter conditions - combine with AND
           filterExpr = buildExpression({
             expression: '',
             operator: 'AND',
-            children: filterConditions,
+            children: allFilters,
           });
         }
       }
@@ -322,7 +361,8 @@ export function createQueryBuilder<Model>(
   tableName: string,
   client: DynamoDBClient,
   model?: ModelDefinition,
-  logger?: DynamoDBLogger
+  logger?: DynamoDBLogger,
+  entityType?: string
 ): QueryBuilder<Model> {
   return {
     where(fn) {
@@ -346,6 +386,7 @@ export function createQueryBuilder<Model>(
         model,
         condition,
         logger,
+        entityType,
       };
 
       return createQueryExecutor(initialState);

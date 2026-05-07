@@ -60,6 +60,60 @@ export const resolveKeys = <M extends ModelDefinition>(
 };
 
 /**
+ * Result of analyzing how a partial update affects a model's secondary index keys.
+ *
+ * `actions` maps index-attribute name → freshly resolved template value, ready to SET.
+ * `missing` lists indexes whose template references at least one updated field but
+ * cannot be fully resolved from `keyVars + updates`; those entries identify the
+ * variables the caller must additionally provide.
+ */
+export type IndexUpdateAnalysis = {
+  actions: Record<string, string>;
+  missing: { index: string; template: string; missing: string[] }[];
+};
+
+/**
+ * Determines which secondary-index keys must be recomputed given a partial update.
+ *
+ * An index is "affected" iff at least one of its template variables appears in
+ * `updates`. For each affected index we attempt to resolve the template from the
+ * union of `keyVars` (template vars carried in the primary key, e.g. `id`) and
+ * `updates` (the user's `.set()` payload). If any template variable is missing
+ * from that union, the index is reported in `missing` instead of `actions` —
+ * recomputing it would require reading the existing item from DynamoDB, which
+ * the builder intentionally does not do.
+ */
+export const computeIndexUpdates = <M extends ModelDefinition>(
+  model: M,
+  keyVars: Record<string, any>,
+  updates: Record<string, any>
+): IndexUpdateAnalysis => {
+  const actions: Record<string, string> = {};
+  const missing: { index: string; template: string; missing: string[] }[] = [];
+
+  if (!model.index) return { actions, missing };
+
+  const updateKeys = new Set(Object.keys(updates));
+  const combined: Record<string, any> = { ...keyVars, ...updates };
+
+  for (const [indexName, indexDef] of Object.entries(model.index)) {
+    const templateVars = extractTemplateVars(indexDef.value);
+    const isAffected = templateVars.some((v) => updateKeys.has(v));
+    if (!isAffected) continue;
+
+    const missingVars = templateVars.filter((v) => combined[v] === undefined);
+    if (missingVars.length > 0) {
+      missing.push({ index: indexName, template: indexDef.value, missing: missingVars });
+      continue;
+    }
+
+    actions[indexName] = resolveTemplate(indexDef.value, combined);
+  }
+
+  return { actions, missing };
+};
+
+/**
  * Applies default and generated values to validated input
  */
 export const applyPostDefaults = <M extends ModelDefinition>(

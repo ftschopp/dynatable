@@ -85,9 +85,10 @@ export const createEntityAPI = <Model extends ModelDefinition>(
     },
 
     query() {
-      // Query builder doesn't have execute() until after .where() is called
-      // The cleanInternalKeys will be handled in the builder itself
-      return createQueryBuilder<InferModel<Model>>(tableName, client, model, logger);
+      // Auto-filter by entity type so query() only returns items for this
+      // entity. Without this, queries on shared GSIs return items from other
+      // entities that share the same partition key.
+      return createQueryBuilder<InferModel<Model>>(tableName, client, model, logger, modelName);
     },
 
     scan() {
@@ -130,7 +131,10 @@ export const createEntityAPI = <Model extends ModelDefinition>(
         'NONE',
         0,
         timestamps,
-        logger
+        logger,
+        // Carry the original template-vars-bearing key (e.g. { username: 'jane' })
+        // so the builder can recompute index keys when .set() touches their template fields.
+        { model, keyVars: key as Record<string, unknown> }
       );
 
       return withMiddleware(builder, createCleanKeysMiddleware(cleanInternalKeys));

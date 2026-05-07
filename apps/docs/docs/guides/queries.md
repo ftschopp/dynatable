@@ -48,6 +48,26 @@ const activeUsers = await table.entities.User.scan()
 Avoid Scan on large tables. It's slow and expensive. Design your schema to use Query instead.
 :::
 
+## Entity-type isolation in single-table designs
+
+In single-table designs multiple entities share the same partition keys — especially on GSIs (e.g. `Airport`, `AirportPersonnel`, and `AirportResource` may all share `GSI1PK = AIRPORT#${airport}`). To make sure `entities.X.query()` and `entities.X.scan()` only return items belonging to that entity, Dynatable automatically appends a filter on a hidden `_type` attribute:
+
+```typescript
+// Issued query (simplified):
+KeyConditionExpression: '#GSI1PK = :gsi1pk_0',
+FilterExpression: '#_type = :_type',
+ExpressionAttributeValues: {
+  ':gsi1pk_0': 'AIRPORT#EZE',
+  ':_type': 'AirportPersonnel', // ← auto-injected from the entity name
+}
+```
+
+You don't need to add this filter yourself — every item written through `entities.X.put()` or `entities.X.batchWrite()` is stamped with `_type = 'X'`, and every `query()`/`scan()` issued through that entity matches it.
+
+:::note
+Items written outside the entity API (e.g. via the raw AWS SDK client, or imported by a migration that doesn't set `_type`) won't be returned by `entities.X.query()`/`scan()`. Backfill `_type` for those rows or query through the raw client if you need to read them.
+:::
+
 ## Basic Query
 
 ### Get Item by Key
@@ -389,6 +409,31 @@ const publishedPosts = await table.entities.Post.query()
   .useIndex('gsi1')
   .execute();
 ```
+
+### Composite (multi-variable) sort keys
+
+A single GSI sort key template can reference more than one attribute, e.g. `RES#${category}#${code}`. Dynatable supports prefix queries on these composite keys via `beginsWith`:
+
+```typescript
+// Model definition:
+// index: {
+//   GSI1PK: { type: String, value: 'AIRPORT#${airport}' },
+//   GSI1SK: { type: String, value: 'RES#${category}#${code}' },
+// }
+
+// ✅ beginsWith on `category` — Dynatable fills `${category}` and truncates the
+// template at the next unfilled placeholder, so the prefix becomes "RES#GPU#".
+const resources = await table.entities.AirportResource.query()
+  .where((attr, op) =>
+    op.and(op.eq(attr.airport, 'EZE'), op.beginsWith(attr.category, 'GPU'))
+  )
+  .useIndex('GSI1')
+  .execute();
+```
+
+:::warning
+Equality (`eq`) and other non-prefix operators on a composite-template attribute will throw, because the resulting key value would still contain unfilled `${...}` placeholders. Use `beginsWith` for prefix queries on composite keys, or supply all template variables.
+:::
 
 ### Query with LSI
 

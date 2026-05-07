@@ -298,3 +298,207 @@ describe('QueryBuilder - GSI key recognition', () => {
     expect(params.FilterExpression).toBeUndefined();
   });
 });
+
+describe('QueryBuilder - multi-variable key templates', () => {
+  const client = new DynamoDBClient({});
+  const tableName = 'TestTable';
+
+  interface AirportResource {
+    id: string;
+    airport: string;
+    category: string;
+    code: string;
+    status: string;
+  }
+
+  const airportResourceModel: ModelDefinition = {
+    key: {
+      PK: { type: String, value: 'AIRPORT_RESOURCE#${id}' },
+      SK: { type: String, value: 'AIRPORT_RESOURCE#${id}' },
+    },
+    index: {
+      GSI1PK: { type: String, value: 'AIRPORT#${airport}' },
+      GSI1SK: { type: String, value: 'RES#${category}#${code}' },
+    },
+    attributes: {
+      id: { type: String, required: true },
+      airport: { type: String, required: true },
+      category: { type: String, required: true },
+      code: { type: String, required: true },
+      status: { type: String, required: true },
+    },
+  };
+
+  test('beginsWith on attribute that is part of multi-var template should truncate at the first unfilled variable', () => {
+    const params = createQueryBuilder<AirportResource>(tableName, client, airportResourceModel)
+      .where((attr, op) =>
+        op.and(op.eq(attr.airport, 'EZE'), op.beginsWith(attr.category, 'GPU'))
+      )
+      .useIndex('GSI1')
+      .dbParams();
+
+    expect(params.KeyConditionExpression).toBeDefined();
+    expect(params.KeyConditionExpression).toContain('#GSI1PK');
+    expect(params.KeyConditionExpression).toContain('begins_with(#GSI1SK');
+    expect(params.IndexName).toBe('GSI1');
+
+    const values = params.ExpressionAttributeValues ?? {};
+    expect(Object.values(values)).toContain('AIRPORT#EZE');
+    // Should be the prefix up to the next unfilled var, NOT 'RES#GPU#${code}'
+    expect(Object.values(values)).toContain('RES#GPU#');
+    expect(Object.values(values).every((v) => !String(v).includes('${'))).toBe(true);
+  });
+
+  test('eq on attribute with multi-var template should throw a clear error', () => {
+    expect(() =>
+      createQueryBuilder<AirportResource>(tableName, client, airportResourceModel)
+        .where((attr, op) => op.eq(attr.category, 'GPU'))
+        .useIndex('GSI1')
+        .dbParams()
+    ).toThrow(/template/i);
+  });
+
+  test('beginsWith on a single-var template still works (no truncation needed)', () => {
+    const params = createQueryBuilder<AirportResource>(tableName, client, airportResourceModel)
+      .where((attr, op) => op.beginsWith(attr.airport, 'EZ'))
+      .useIndex('GSI1')
+      .dbParams();
+
+    const values = params.ExpressionAttributeValues ?? {};
+    expect(Object.values(values)).toContain('AIRPORT#EZ');
+  });
+});
+
+describe('QueryBuilder - entity type auto filter', () => {
+  const client = new DynamoDBClient({});
+  const tableName = 'TestTable';
+
+  interface AirportPersonnel {
+    id: string;
+    airport: string;
+    role: string;
+  }
+
+  // Mirrors the reported scenario: PK is entity-specific, GSI1 is shared
+  // across multiple entities (Airport, AirportPersonnel, etc.)
+  const airportPersonnelModel: ModelDefinition = {
+    key: {
+      PK: { type: String, value: 'AIRPORT_PERSONNEL#${id}' },
+      SK: { type: String, value: 'AIRPORT_PERSONNEL#${id}' },
+    },
+    index: {
+      GSI1PK: { type: String, value: 'AIRPORT#${airport}' },
+      GSI1SK: { type: String, value: 'PERSONNEL#${role}' },
+    },
+    attributes: {
+      id: { type: String, required: true },
+      airport: { type: String, required: true },
+      role: { type: String, required: true },
+    },
+  };
+
+  test('does NOT add _type filter when entityType is not provided (back-compat)', () => {
+    const params = createQueryBuilder<AirportPersonnel>(
+      tableName,
+      client,
+      airportPersonnelModel
+    )
+      .where((attr, op) => op.eq(attr.airport, 'EZE'))
+      .useIndex('GSI1')
+      .dbParams();
+
+    expect(params.FilterExpression).toBeUndefined();
+    const names = params.ExpressionAttributeNames ?? {};
+    expect(names['#_type']).toBeUndefined();
+  });
+
+  test('adds _type filter when entityType is provided and there are no other filters', () => {
+    const params = createQueryBuilder<AirportPersonnel>(
+      tableName,
+      client,
+      airportPersonnelModel,
+      undefined,
+      'AirportPersonnel'
+    )
+      .where((attr, op) => op.eq(attr.airport, 'EZE'))
+      .useIndex('GSI1')
+      .dbParams();
+
+    // Key cond goes to KeyConditionExpression, _type goes to FilterExpression
+    expect(params.KeyConditionExpression).toBeDefined();
+    expect(params.KeyConditionExpression).toContain('#GSI1PK');
+    expect(params.FilterExpression).toBe('#_type = :_type');
+    expect(params.ExpressionAttributeNames?.['#_type']).toBe('_type');
+    expect(params.ExpressionAttributeValues?.[':_type']).toBe('AirportPersonnel');
+  });
+
+  test('combines _type filter with a user-provided non-key filter via AND', () => {
+    const params = createQueryBuilder<AirportPersonnel & { status?: string }>(
+      tableName,
+      client,
+      airportPersonnelModel,
+      undefined,
+      'AirportPersonnel'
+    )
+      .where((attr, op) => op.and(op.eq(attr.airport, 'EZE'), op.eq(attr.status, 'active')))
+      .useIndex('GSI1')
+      .dbParams();
+
+    expect(params.KeyConditionExpression).toContain('#GSI1PK');
+    expect(params.FilterExpression).toBeDefined();
+    expect(params.FilterExpression).toContain('#status');
+    expect(params.FilterExpression).toContain('#_type = :_type');
+    expect(params.ExpressionAttributeValues?.[':_type']).toBe('AirportPersonnel');
+  });
+
+  test('repro of reported bug: GSI1 query with conditional beginsWith still filters by _type', () => {
+    // The exact shape from the user report:
+    //   .where((attr, op) =>
+    //     role
+    //       ? op.and(op.eq(attr.airport, airport), op.beginsWith(attr.role, role))
+    //       : op.eq(attr.airport, airport)
+    //   )
+    const airport = 'EZE';
+    const role = 'PILOT';
+
+    const params = createQueryBuilder<AirportPersonnel>(
+      tableName,
+      client,
+      airportPersonnelModel,
+      undefined,
+      'AirportPersonnel'
+    )
+      .where((attr, op) =>
+        role
+          ? op.and(op.eq(attr.airport, airport), op.beginsWith(attr.role, role))
+          : op.eq(attr.airport, airport)
+      )
+      .useIndex('GSI1')
+      .dbParams();
+
+    // Both airport (GSI1PK) and role (GSI1SK) become key conditions
+    expect(params.KeyConditionExpression).toContain('#GSI1PK');
+    expect(params.KeyConditionExpression).toContain('begins_with(#GSI1SK');
+    // _type still gets enforced as a filter — this is the fix
+    expect(params.FilterExpression).toBe('#_type = :_type');
+    expect(params.ExpressionAttributeValues?.[':_type']).toBe('AirportPersonnel');
+  });
+
+  test('does not collide with user attribute placeholders', () => {
+    // Confirm the auto-injected names/values don't clash with user-supplied ones
+    const params = createQueryBuilder<AirportPersonnel & { status?: string }>(
+      tableName,
+      client,
+      airportPersonnelModel,
+      undefined,
+      'AirportPersonnel'
+    )
+      .where((attr, op) => op.and(op.eq(attr.airport, 'EZE'), op.eq(attr.status, 'active')))
+      .useIndex('GSI1')
+      .dbParams();
+
+    expect(params.ExpressionAttributeNames?.['#_type']).toBe('_type');
+    expect(params.ExpressionAttributeNames?.['#status']).toBe('status');
+    expect(params.ExpressionAttributeValues?.[':_type']).toBe('AirportPersonnel');
+  });
+});

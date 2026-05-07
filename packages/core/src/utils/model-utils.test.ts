@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { applyPostDefaults, stripInternalKeys } from './model-utils';
+import { applyPostDefaults, computeIndexUpdates, stripInternalKeys } from './model-utils';
 import { ModelDefinition } from '../core/types';
 
 describe('applyPostDefaults - Timestamps', () => {
@@ -358,5 +358,95 @@ describe('stripInternalKeys', () => {
         value: 'test',
       },
     });
+  });
+});
+
+describe('computeIndexUpdates', () => {
+  const personnelModel: ModelDefinition = {
+    key: {
+      PK: { type: String, value: 'PERSON#${id}' },
+      SK: { type: String, value: 'PROFILE' },
+    },
+    index: {
+      GSI1PK: { type: String, value: 'AIRPORT#${airportId}' },
+      GSI1SK: { type: String, value: 'PERSON#${lastName}#${firstName}' },
+    },
+    attributes: {
+      id: { type: String, required: true },
+      airportId: { type: String, required: true },
+      firstName: { type: String, required: true },
+      lastName: { type: String, required: true },
+    },
+  };
+
+  test('returns empty result when model has no indexes', () => {
+    const noIndexModel: ModelDefinition = {
+      key: {
+        PK: { type: String, value: 'USER#${id}' },
+        SK: { type: String, value: 'USER#${id}' },
+      },
+      attributes: { id: { type: String, required: true } },
+    };
+    const result = computeIndexUpdates(noIndexModel, { id: '1' }, { name: 'X' });
+    expect(result).toEqual({ actions: {}, missing: [] });
+  });
+
+  test('skips indexes whose template references no updated field', () => {
+    // Updating only "role" — none of the index templates mention role.
+    const result = computeIndexUpdates(
+      personnelModel,
+      { id: '1' },
+      { role: 'pilot' }
+    );
+    expect(result).toEqual({ actions: {}, missing: [] });
+  });
+
+  test('recomputes an affected index when all template vars resolve', () => {
+    const result = computeIndexUpdates(
+      personnelModel,
+      { id: '1' },
+      { firstName: 'Ada', lastName: 'Lovelace' }
+    );
+    expect(result.actions).toEqual({ GSI1SK: 'PERSON#Lovelace#Ada' });
+    expect(result.missing).toEqual([]);
+  });
+
+  test('reports missing template vars instead of throwing', () => {
+    const result = computeIndexUpdates(
+      personnelModel,
+      { id: '1' },
+      { lastName: 'Lovelace' }
+    );
+    expect(result.actions).toEqual({});
+    expect(result.missing).toEqual([
+      {
+        index: 'GSI1SK',
+        template: 'PERSON#${lastName}#${firstName}',
+        missing: ['firstName'],
+      },
+    ]);
+  });
+
+  test('uses keyVars to resolve fields not present in updates', () => {
+    // airportId is not in updates but in keyVars — GSI1PK should still resolve.
+    const result = computeIndexUpdates(
+      personnelModel,
+      { id: '1', airportId: 'EZE' },
+      { airportId: 'AEP' } // changing it
+    );
+    expect(result.actions).toEqual({ GSI1PK: 'AIRPORT#AEP' });
+  });
+
+  test('handles multiple affected indexes independently', () => {
+    const result = computeIndexUpdates(
+      personnelModel,
+      { id: '1' },
+      { airportId: 'AEP', firstName: 'Ada', lastName: 'Lovelace' }
+    );
+    expect(result.actions).toEqual({
+      GSI1PK: 'AIRPORT#AEP',
+      GSI1SK: 'PERSON#Lovelace#Ada',
+    });
+    expect(result.missing).toEqual([]);
   });
 });

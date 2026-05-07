@@ -21,6 +21,7 @@ export function createOpBuilder(): OpBuilder {
         expression: `#${attr.name} = :${valueName}`,
         names: { [`#${attr.name}`]: attr.name },
         values: { [`:${valueName}`]: value },
+        keyOperator: 'eq',
       };
     },
     ne: (attr, value) => {
@@ -29,6 +30,7 @@ export function createOpBuilder(): OpBuilder {
         expression: `#${attr.name} <> :${valueName}`,
         names: { [`#${attr.name}`]: attr.name },
         values: { [`:${valueName}`]: value },
+        keyOperator: 'ne',
       };
     },
     lt: (attr, value) => {
@@ -37,6 +39,7 @@ export function createOpBuilder(): OpBuilder {
         expression: `#${attr.name} < :${valueName}`,
         names: { [`#${attr.name}`]: attr.name },
         values: { [`:${valueName}`]: value },
+        keyOperator: 'lt',
       };
     },
     lte: (attr, value) => {
@@ -45,6 +48,7 @@ export function createOpBuilder(): OpBuilder {
         expression: `#${attr.name} <= :${valueName}`,
         names: { [`#${attr.name}`]: attr.name },
         values: { [`:${valueName}`]: value },
+        keyOperator: 'lte',
       };
     },
     gt: (attr, value) => {
@@ -53,6 +57,7 @@ export function createOpBuilder(): OpBuilder {
         expression: `#${attr.name} > :${valueName}`,
         names: { [`#${attr.name}`]: attr.name },
         values: { [`:${valueName}`]: value },
+        keyOperator: 'gt',
       };
     },
     gte: (attr, value) => {
@@ -61,6 +66,7 @@ export function createOpBuilder(): OpBuilder {
         expression: `#${attr.name} >= :${valueName}`,
         names: { [`#${attr.name}`]: attr.name },
         values: { [`:${valueName}`]: value },
+        keyOperator: 'gte',
       };
     },
     between: (attr, low, high) => {
@@ -73,6 +79,7 @@ export function createOpBuilder(): OpBuilder {
           [`:${lowName}`]: low,
           [`:${highName}`]: high,
         },
+        keyOperator: 'between',
       };
     },
     beginsWith: (attr, value) => {
@@ -81,6 +88,7 @@ export function createOpBuilder(): OpBuilder {
         expression: `begins_with(#${attr.name}, :${valueName})`,
         names: { [`#${attr.name}`]: attr.name },
         values: { [`:${valueName}`]: value },
+        keyOperator: 'beginsWith',
       };
     },
     contains: (attr, value) => {

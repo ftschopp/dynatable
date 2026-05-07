@@ -1,4 +1,5 @@
 import type { UpdateCommandInput } from '@aws-sdk/lib-dynamodb';
+import { ModelDefinition } from '@/core/types';
 import { OperationBuilder, AttrRef } from '../shared';
 
 /**
@@ -8,6 +9,19 @@ export type UpdateAction = {
   expression: string;
   names?: Record<string, string>;
   values?: Record<string, any>;
+};
+
+/**
+ * Context that lets the update builder auto-recompute secondary-index keys
+ * when a `.set()` touches a field that participates in their templates.
+ *
+ * `keyVars` carries the original template-variable values used to build the
+ * primary key (e.g. `{ id: '123' }` from `update({ id: '123' })`) so they can
+ * be combined with the user's `.set()` payload when resolving index templates.
+ */
+export type IndexContext = {
+  model: ModelDefinition;
+  keyVars: Record<string, any>;
 };
 
 /**

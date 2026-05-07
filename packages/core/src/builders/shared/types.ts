@@ -11,6 +11,7 @@ export type Condition = {
   names?: Record<string, string>;
   values?: Record<string, any>;
   operator?: 'AND' | 'OR';
+  keyOperator?: 'eq' | 'ne' | 'lt' | 'lte' | 'gt' | 'gte' | 'between' | 'beginsWith';
   isNegated?: boolean;
   children?: Condition[];
 };

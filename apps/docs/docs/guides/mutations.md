@@ -107,7 +107,7 @@ await table.entities.User.update({
   .execute();
 ```
 
-Multiple sets:
+Multiple sets via chained calls:
 
 ```typescript
 await table.entities.User.update({
@@ -118,6 +118,24 @@ await table.entities.User.update({
   .set('bio', 'Senior engineer')
   .execute();
 ```
+
+Or pass a `Partial<Model>` object to set several attributes in one call:
+
+```typescript
+await table.entities.User.update({
+  username: 'alice',
+})
+  .set({
+    name: 'Alice Johnson',
+    email: 'alice.johnson@example.com',
+    bio: 'Senior engineer',
+  })
+  .execute();
+```
+
+:::note
+Both forms are equivalent. The object form is convenient when patching from a partial DTO. Any attribute name is accepted, including `name`.
+:::
 
 ### Add (Increment/Decrement)
 

@@ -2,11 +2,18 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { buildExpression, AttrBuilder, Condition, createOpBuilder, AttrRef } from '../shared';
-import { UpdateBuilder, UpdateAction } from './types';
+import { UpdateBuilder, UpdateAction, IndexContext } from './types';
 import { DynamoDBLogger } from '../../utils/dynamodb-logger';
+import { computeIndexUpdates } from '../../utils/model-utils';
 
 /**
  * Creates an UpdateBuilder for an item key and table.
+ *
+ * When `indexContext` is provided, fields written via `.set()` that participate
+ * in any secondary-index template are detected and the affected index keys are
+ * recomputed automatically and included in the SET expression. If a template
+ * cannot be fully resolved from the primary-key vars plus the updates, building
+ * the params throws — the caller must include the missing fields in `.set()`.
  */
 export function createUpdateBuilder<Model>(
   tableName: string,
@@ -22,7 +29,9 @@ export function createUpdateBuilder<Model>(
   returnMode: 'NONE' | 'ALL_OLD' | 'ALL_NEW' | 'UPDATED_OLD' | 'UPDATED_NEW' = 'NONE',
   valueCounter = 0,
   enableTimestamps = false,
-  logger?: DynamoDBLogger
+  logger?: DynamoDBLogger,
+  indexContext?: IndexContext,
+  setInputs: Record<string, any> = {}
 ): UpdateBuilder<Model> {
   const conditions = [...prevConditions];
 
@@ -55,27 +64,25 @@ export function createUpdateBuilder<Model>(
         returnMode,
         valueCounter,
         enableTimestamps,
-        logger
+        logger,
+        indexContext,
+        setInputs
       );
     },
 
     set(attrOrUpdates: keyof Model | AttrRef | Partial<Model>, value?: any) {
-      // Check if this is a multiple updates object
-      // An AttrRef has only 'name' property and is a string value
-      // Multiple updates is an object with no value parameter
+      // When no value is provided and the first arg is a plain object,
+      // treat it as a Partial<Model>. The AttrRef overload always passes
+      // a value, so it's handled by the single-update path below.
       if (
         value === undefined &&
         typeof attrOrUpdates === 'object' &&
-        attrOrUpdates !== null &&
-        !(
-          Object.keys(attrOrUpdates).length === 1 &&
-          'name' in attrOrUpdates &&
-          typeof (attrOrUpdates as any).name === 'string'
-        )
+        attrOrUpdates !== null
       ) {
         // Multiple updates case
         const updates = attrOrUpdates as Partial<Model>;
         const newActions: UpdateAction[] = [];
+        const newSetInputs = { ...setInputs };
 
         for (const [attr, val] of Object.entries(updates)) {
           const attrName = attr;
@@ -85,6 +92,7 @@ export function createUpdateBuilder<Model>(
             names: { [`#${attrName}`]: attrName },
             values: { [`:${valueName}`]: val },
           });
+          newSetInputs[attrName] = val;
         }
 
         return createUpdateBuilder(
@@ -96,7 +104,9 @@ export function createUpdateBuilder<Model>(
           returnMode,
           valueCounter,
           enableTimestamps,
-          logger
+          logger,
+          indexContext,
+          newSetInputs
         );
       }
 
@@ -117,7 +127,9 @@ export function createUpdateBuilder<Model>(
         returnMode,
         valueCounter,
         enableTimestamps,
-        logger
+        logger,
+        indexContext,
+        { ...setInputs, [attrName]: value }
       );
     },
 
@@ -136,7 +148,9 @@ export function createUpdateBuilder<Model>(
         returnMode,
         valueCounter,
         enableTimestamps,
-        logger
+        logger,
+        indexContext,
+        setInputs
       );
     },
 
@@ -157,7 +171,9 @@ export function createUpdateBuilder<Model>(
         returnMode,
         valueCounter,
         enableTimestamps,
-        logger
+        logger,
+        indexContext,
+        setInputs
       );
     },
 
@@ -178,7 +194,9 @@ export function createUpdateBuilder<Model>(
         returnMode,
         valueCounter,
         enableTimestamps,
-        logger
+        logger,
+        indexContext,
+        setInputs
       );
     },
 
@@ -192,7 +210,9 @@ export function createUpdateBuilder<Model>(
         mode,
         valueCounter,
         enableTimestamps,
-        logger
+        logger,
+        indexContext,
+        setInputs
       );
     },
 
@@ -203,7 +223,40 @@ export function createUpdateBuilder<Model>(
       const allValues: Record<string, any> = {};
 
       // Clone updateActions to avoid mutation
-      const actionsToProcess = { ...updateActions };
+      const actionsToProcess = { ...updateActions, set: [...updateActions.set] };
+
+      // Auto-recompute secondary-index keys whose templates depend on any
+      // updated field. If a template can't be fully resolved from the primary
+      // key vars + the .set() payload, we throw — recomputing from the
+      // existing item would require an extra read the builder won't do.
+      if (indexContext) {
+        const { actions: idxActions, missing } = computeIndexUpdates(
+          indexContext.model,
+          indexContext.keyVars,
+          setInputs
+        );
+        if (missing.length > 0) {
+          const details = missing
+            .map(
+              (m) =>
+                `  - ${m.index} ("${m.template}"): missing ${m.missing.join(', ')}`
+            )
+            .join('\n');
+          throw new Error(
+            `Update touches fields that participate in secondary index templates, ` +
+              `but the templates cannot be fully resolved from the update payload. ` +
+              `Include the missing fields in .set():\n${details}`
+          );
+        }
+        for (const [indexName, resolved] of Object.entries(idxActions)) {
+          const valueName = getUniqueValueName(indexName);
+          actionsToProcess.set.push({
+            expression: `#${indexName} = :${valueName}`,
+            names: { [`#${indexName}`]: indexName },
+            values: { [`:${valueName}`]: resolved },
+          });
+        }
+      }
 
       // Add updatedAt timestamp if enabled
       if (enableTimestamps) {

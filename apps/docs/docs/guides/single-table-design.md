@@ -261,13 +261,27 @@ const comments = await table.entities.Comment.query()
 #### 4. Get all published posts (using GSI)
 
 ```typescript
+// ✅ Using attribute names — Dynatable resolves them to GSI keys and
+// applies the composite template `STATUS#${published}#${postId}`. With
+// `beginsWith` it truncates after the matched variable, so the prefix
+// becomes `STATUS#true#`.
 const publishedPosts = await table.entities.Post.query()
+  .where((attr, op) => op.beginsWith(attr.published, true))
+  .useIndex('gsi1')
+  .execute();
+
+// Equivalent fallback using raw GSI keys:
+const publishedPostsRaw = await table.entities.Post.query()
   .where((attr, op) =>
     op.and(op.eq(attr.GSI1PK, 'POST'), op.beginsWith(attr.GSI1SK, 'STATUS#true'))
   )
   .useIndex('gsi1')
   .execute();
 ```
+
+:::tip
+For composite-template attributes (e.g. `STATUS#${published}#${postId}`), use `beginsWith`. `eq` and other non-prefix operators throw because the resulting key would still contain unfilled placeholders. See the [Queries guide](./queries#composite-multi-variable-sort-keys) for details.
+:::
 
 #### 5. Get all comments by a user (using GSI)
 
