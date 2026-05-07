@@ -1,3 +1,10 @@
+# @ftschopp/dynatable-core [1.3.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.2.5...@ftschopp/dynatable-core@1.3.0) (2026-05-07)
+
+
+### Features
+
+* **core:** auto-recompute index keys on update and improve composite-key queries ([ce4b7dc](https://github.com/ftschopp/dynatable/commit/ce4b7dc1d783ffe2d78fee7f43b999a179a9f9f4))
+
 ## @ftschopp/dynatable-core [1.2.5](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.2.4...@ftschopp/dynatable-core@1.2.5) (2026-05-05)
 
 
