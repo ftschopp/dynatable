@@ -2,6 +2,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
 import { Migration, MigrationFile } from '../types';
+import { compareSemver } from './semver';
 
 /**
  * Load all migration files from directory
@@ -41,7 +42,7 @@ export class MigrationLoader {
         // Sort by semver
         const versionA = a.match(/^(\d+\.\d+\.\d+)/)?.[1] || '0.0.0';
         const versionB = b.match(/^(\d+\.\d+\.\d+)/)?.[1] || '0.0.0';
-        return this.compareSemver(versionA, versionB);
+        return compareSemver(versionA, versionB);
       });
 
     const migrations: MigrationFile[] = [];
@@ -252,22 +253,4 @@ export class MigrationLoader {
     return '0.1.0';
   }
 
-  /**
-   * Compare semver versions
-   * Returns: -1 if a < b, 0 if a === b, 1 if a > b
-   */
-  private compareSemver(a: string, b: string): number {
-    const partsA = a.split('.').map((n) => parseInt(n, 10));
-    const partsB = b.split('.').map((n) => parseInt(n, 10));
-
-    for (let i = 0; i < 3; i++) {
-      const numA = partsA[i] || 0;
-      const numB = partsB[i] || 0;
-
-      if (numA > numB) return 1;
-      if (numA < numB) return -1;
-    }
-
-    return 0;
-  }
 }
