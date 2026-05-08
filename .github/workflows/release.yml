@@ -48,7 +48,7 @@ jobs:
             ${{ runner.os }}-yarn-
 
       - name: Install dependencies
-        run: yarn install --immutable
+        run: yarn install --frozen-lockfile
 
       - name: Build packages
         run: yarn build
@@ -101,7 +101,7 @@ jobs:
             ${{ runner.os }}-yarn-
 
       - name: Install dependencies
-        run: yarn install --immutable
+        run: yarn install --frozen-lockfile
 
       - name: Build documentation
         working-directory: apps/docs
