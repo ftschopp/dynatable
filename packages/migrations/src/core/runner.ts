@@ -48,6 +48,12 @@ export class MigrationRunner {
   async up(options: RunOptions = {}): Promise<MigrationFile[]> {
     const { limit, dryRun = false } = options;
 
+    if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) {
+      throw new Error(
+        `runner.up({ limit }) requires a positive integer (got ${JSON.stringify(limit)}).`
+      );
+    }
+
     await this.initialize();
 
     // Acquire lock unless dry run
@@ -149,6 +155,12 @@ export class MigrationRunner {
    * Rollback last migration
    */
   async down(steps: number = 1, dryRun: boolean = false): Promise<MigrationFile[]> {
+    if (!Number.isInteger(steps) || steps <= 0) {
+      throw new Error(
+        `runner.down(steps) requires a positive integer (got ${JSON.stringify(steps)}).`
+      );
+    }
+
     await this.initialize();
 
     // Acquire lock unless dry run
