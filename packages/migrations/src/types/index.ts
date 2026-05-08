@@ -117,6 +117,12 @@ export interface MigrationConfig {
   migrationsDir?: string;
   trackingPrefix?: string; // Default: "_SCHEMA#VERSION"
   gsi1Name?: string; // Default: "GSI1"
+  /**
+   * How long an acquired migration lock stays valid before another worker
+   * can take it over, in seconds. The runner sends a heartbeat every
+   * `lockTtlSeconds / 3` to extend it. Default: 300 (5 minutes).
+   */
+  lockTtlSeconds?: number;
 }
 
 /**
@@ -147,6 +153,12 @@ export interface MigrationTracker {
    * Release the distributed lock
    */
   releaseLock(): Promise<void>;
+
+  /**
+   * Extend the lock's expiration. Throws `ConditionalCheckFailedException`
+   * if the lock has already been taken by someone else.
+   */
+  refreshLock(): Promise<void>;
 
   /**
    * Mark migration as applied

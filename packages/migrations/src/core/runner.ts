@@ -15,6 +15,7 @@ import { MigrationConfig, MigrationContext, MigrationFile, MigrationStatus } fro
 import { DynamoDBMigrationTracker } from './tracker';
 import { MigrationLoader } from './loader';
 import { compareSemver } from './semver';
+import { startLockHeartbeat } from './lock-heartbeat';
 
 export interface RunOptions {
   limit?: number;
@@ -50,6 +51,7 @@ export class MigrationRunner {
     await this.initialize();
 
     // Acquire lock unless dry run
+    let stopHeartbeat: (() => void) | undefined;
     if (!dryRun) {
       const lockAcquired = await this.tracker.acquireLock();
       if (!lockAcquired) {
@@ -58,6 +60,7 @@ export class MigrationRunner {
             'If you believe this is an error, wait a few minutes and try again.'
         );
       }
+      stopHeartbeat = startLockHeartbeat(this.tracker, this.tracker.lockTtlSeconds);
     }
 
     try {
@@ -133,7 +136,9 @@ export class MigrationRunner {
 
       return executed;
     } finally {
-      // Always release lock
+      // Always stop the heartbeat and release the lock — in that order, so
+      // we don't refresh a lock we're about to delete.
+      if (stopHeartbeat) stopHeartbeat();
       if (!dryRun) {
         await this.tracker.releaseLock();
       }
@@ -147,11 +152,13 @@ export class MigrationRunner {
     await this.initialize();
 
     // Acquire lock unless dry run
+    let stopHeartbeat: (() => void) | undefined;
     if (!dryRun) {
       const lockAcquired = await this.tracker.acquireLock();
       if (!lockAcquired) {
         throw new Error('Could not acquire migration lock. Another migration may be in progress.');
       }
+      stopHeartbeat = startLockHeartbeat(this.tracker, this.tracker.lockTtlSeconds);
     }
 
     try {
@@ -207,6 +214,7 @@ export class MigrationRunner {
 
       return rolledBack;
     } finally {
+      if (stopHeartbeat) stopHeartbeat();
       if (!dryRun) {
         await this.tracker.releaseLock();
       }

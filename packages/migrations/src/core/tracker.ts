@@ -10,7 +10,8 @@ import {
 import { MigrationTracker, MigrationRecord, SchemaChange, MigrationConfig } from '../types';
 import { compareSemver } from './semver';
 
-const LOCK_TTL_SECONDS = 300; // 5 minutes
+/** Default lock TTL in seconds. Configurable via MigrationConfig.lockTtlSeconds. */
+export const DEFAULT_LOCK_TTL_SECONDS = 300; // 5 minutes
 
 export class DynamoDBMigrationTracker implements MigrationTracker {
   private client: DynamoDBDocumentClient;
@@ -18,12 +19,47 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
   private trackingPrefix: string;
   private gsi1Name: string;
   private lockId: string | null = null;
+  /** TTL for newly-acquired or refreshed locks. */
+  public readonly lockTtlSeconds: number;
 
   constructor(client: DynamoDBDocumentClient, config: MigrationConfig) {
     this.client = client;
     this.tableName = config.tableName;
     this.trackingPrefix = config.trackingPrefix || '_SCHEMA#VERSION';
     this.gsi1Name = config.gsi1Name || 'GSI1';
+    this.lockTtlSeconds = config.lockTtlSeconds ?? DEFAULT_LOCK_TTL_SECONDS;
+  }
+
+  private get lockKey() {
+    return {
+      PK: `${this.trackingPrefix}#LOCK`,
+      SK: `${this.trackingPrefix}#LOCK`,
+    };
+  }
+
+  /** Throws if there is no active lock. Call before any tracker write. */
+  private requireLock(): void {
+    if (!this.lockId) {
+      throw new Error(
+        'Tracker has no active lock; refusing to issue tracker mutations. ' +
+          'Call acquireLock() first.'
+      );
+    }
+  }
+
+  /** Builds a TransactWrite ConditionCheck that asserts we still own the lock. */
+  private lockOwnershipCheck() {
+    this.requireLock();
+    return {
+      ConditionCheck: {
+        TableName: this.tableName,
+        Key: this.lockKey,
+        ConditionExpression: 'lockId = :lockId',
+        ExpressionAttributeValues: {
+          ':lockId': this.lockId,
+        },
+      },
+    };
   }
 
   async initialize(): Promise<void> {
@@ -51,13 +87,8 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
    * Acquire a distributed lock to prevent concurrent migrations
    */
   async acquireLock(): Promise<boolean> {
-    const lockKey = {
-      PK: `${this.trackingPrefix}#LOCK`,
-      SK: `${this.trackingPrefix}#LOCK`,
-    };
-
     const now = Date.now();
-    const expiresAt = now + LOCK_TTL_SECONDS * 1000;
+    const expiresAt = now + this.lockTtlSeconds * 1000;
     this.lockId = `lock-${now}-${Math.random().toString(36).substring(7)}`;
 
     try {
@@ -65,13 +96,14 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
         new PutCommand({
           TableName: this.tableName,
           Item: {
-            ...lockKey,
+            ...this.lockKey,
             lockId: this.lockId,
             acquiredAt: new Date().toISOString(),
             expiresAt,
           },
-          // Only succeed if lock doesn't exist or has expired
-          ConditionExpression: 'attribute_not_exists(PK) OR expiresAt < :now',
+          // Only succeed if lock doesn't exist or has expired. The `<=`
+          // covers the boundary where two clocks read the exact ms.
+          ConditionExpression: 'attribute_not_exists(PK) OR expiresAt <= :now',
           ExpressionAttributeValues: {
             ':now': now,
           },
@@ -88,21 +120,41 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
   }
 
   /**
+   * Extend the lock's expiration by another `lockTtlSeconds`. Throws
+   * `ConditionalCheckFailedException` if another worker has already taken
+   * the lock — callers should treat that as "we lost the race; stop
+   * making writes". Silent no-op if no lock is currently held.
+   */
+  async refreshLock(): Promise<void> {
+    if (!this.lockId) return;
+
+    const newExpiresAt = Date.now() + this.lockTtlSeconds * 1000;
+
+    await this.client.send(
+      new UpdateCommand({
+        TableName: this.tableName,
+        Key: this.lockKey,
+        UpdateExpression: 'SET expiresAt = :exp',
+        ConditionExpression: 'lockId = :lockId',
+        ExpressionAttributeValues: {
+          ':exp': newExpiresAt,
+          ':lockId': this.lockId,
+        },
+      })
+    );
+  }
+
+  /**
    * Release the distributed lock
    */
   async releaseLock(): Promise<void> {
     if (!this.lockId) return;
 
-    const lockKey = {
-      PK: `${this.trackingPrefix}#LOCK`,
-      SK: `${this.trackingPrefix}#LOCK`,
-    };
-
     try {
       await this.client.send(
         new DeleteCommand({
           TableName: this.tableName,
-          Key: lockKey,
+          Key: this.lockKey,
           // Only delete if we own the lock
           ConditionExpression: 'lockId = :lockId',
           ExpressionAttributeValues: {
@@ -171,6 +223,7 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
     schemaChanges?: SchemaChange[],
     checksum?: string
   ): Promise<void> {
+    this.requireLock();
     const now = new Date().toISOString();
 
     // Check if migration record already exists (e.g., rolled back or failed)
@@ -202,6 +255,7 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
       await this.client.send(
         new TransactWriteCommand({
           TransactItems: [
+            this.lockOwnershipCheck(),
             {
               Update: {
                 TableName: this.tableName,
@@ -244,6 +298,7 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
       await this.client.send(
         new TransactWriteCommand({
           TransactItems: [
+            this.lockOwnershipCheck(),
             {
               Put: {
                 TableName: this.tableName,
@@ -259,8 +314,9 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
                   schemaChanges,
                   checksum,
                 } as MigrationRecord,
-                // Ensure migration wasn't already applied
-                ConditionExpression: 'attribute_not_exists(PK)',
+                // Ensure migration wasn't already applied (uniqueness on
+                // SK; PK is shared across all migration rows).
+                ConditionExpression: 'attribute_not_exists(SK)',
               },
             },
             {
@@ -289,6 +345,7 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
    * Mark migration as rolled back using TransactWrite for atomicity
    */
   async markAsRolledBack(version: string): Promise<void> {
+    this.requireLock();
     const now = new Date().toISOString();
 
     // Find previous version
@@ -303,6 +360,7 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
     await this.client.send(
       new TransactWriteCommand({
         TransactItems: [
+          this.lockOwnershipCheck(),
           {
             Update: {
               TableName: this.tableName,
@@ -342,70 +400,95 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
   }
 
   async markAsFailed(version: string, error: string): Promise<void> {
+    this.requireLock();
     // Check if the migration record exists first
     const existing = await this.getMigration(version);
+    const now = new Date().toISOString();
 
     if (existing) {
-      // Update existing record
+      // Update existing record, gated by lock ownership
       await this.client.send(
-        new UpdateCommand({
-          TableName: this.tableName,
-          Key: {
-            PK: this.trackingPrefix,
-            SK: version,
-          },
-          UpdateExpression: 'SET #status = :status, #error = :error, failedAt = :timestamp',
-          ExpressionAttributeNames: {
-            '#status': 'status',
-            '#error': 'error',
-          },
-          ExpressionAttributeValues: {
-            ':status': 'failed',
-            ':error': error,
-            ':timestamp': new Date().toISOString(),
-          },
+        new TransactWriteCommand({
+          TransactItems: [
+            this.lockOwnershipCheck(),
+            {
+              Update: {
+                TableName: this.tableName,
+                Key: {
+                  PK: this.trackingPrefix,
+                  SK: version,
+                },
+                UpdateExpression:
+                  'SET #status = :status, #error = :error, failedAt = :timestamp',
+                ExpressionAttributeNames: {
+                  '#status': 'status',
+                  '#error': 'error',
+                },
+                ExpressionAttributeValues: {
+                  ':status': 'failed',
+                  ':error': error,
+                  ':timestamp': now,
+                },
+              },
+            },
+          ],
         })
       );
     } else {
-      // Create new record for failed migration
+      // Create new record for failed migration, gated by lock ownership
       await this.client.send(
-        new PutCommand({
-          TableName: this.tableName,
-          Item: {
-            PK: this.trackingPrefix,
-            SK: version,
-            version,
-            name: 'unknown',
-            status: 'failed',
-            error,
-            failedAt: new Date().toISOString(),
-            timestamp: new Date().toISOString(),
-          },
+        new TransactWriteCommand({
+          TransactItems: [
+            this.lockOwnershipCheck(),
+            {
+              Put: {
+                TableName: this.tableName,
+                Item: {
+                  PK: this.trackingPrefix,
+                  SK: version,
+                  version,
+                  name: 'unknown',
+                  status: 'failed',
+                  error,
+                  failedAt: now,
+                  timestamp: now,
+                },
+              },
+            },
+          ],
         })
       );
     }
   }
 
   async recordSchemaChange(change: SchemaChange): Promise<void> {
+    this.requireLock();
     const currentVersion = await this.getCurrentVersion();
     if (!currentVersion || currentVersion === 'v0000') {
       throw new Error('Cannot record schema change: No migration has been applied yet');
     }
 
-    // Append to schemaChanges array
+    // Append to schemaChanges array, gated by lock ownership
     await this.client.send(
-      new UpdateCommand({
-        TableName: this.tableName,
-        Key: {
-          PK: this.trackingPrefix,
-          SK: currentVersion,
-        },
-        UpdateExpression:
-          'SET schemaChanges = list_append(if_not_exists(schemaChanges, :empty_list), :change)',
-        ExpressionAttributeValues: {
-          ':empty_list': [],
-          ':change': [change],
-        },
+      new TransactWriteCommand({
+        TransactItems: [
+          this.lockOwnershipCheck(),
+          {
+            Update: {
+              TableName: this.tableName,
+              Key: {
+                PK: this.trackingPrefix,
+                SK: currentVersion,
+              },
+              UpdateExpression:
+                'SET schemaChanges = list_append(if_not_exists(schemaChanges, :empty_list), :change)',
+              ExpressionAttributeValues: {
+                ':empty_list': [],
+                ':change': [change],
+              },
+            },
+          },
+        ],
       })
     );
   }
