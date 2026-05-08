@@ -1,6 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { BatchGetCommand } from '@aws-sdk/lib-dynamodb';
+import { mockClient } from 'aws-sdk-client-mock';
 import { createBatchGetBuilder } from './create-batch-get-builder';
+import { BatchUnprocessedError } from '../shared';
+
+const ddbMock = mockClient(DynamoDBClient);
 
 interface User {
   pk: string;
@@ -188,6 +193,94 @@ describe('BatchGetBuilder', () => {
           '#name': 'name',
         },
       });
+    });
+  });
+
+  describe('execute - chunking + retry', () => {
+    beforeEach(() => {
+      ddbMock.reset();
+    });
+
+    function makeKeys(n: number, prefix = 'u') {
+      return Array.from({ length: n }, (_, i) => ({
+        pk: `USER#${prefix}${i}`,
+        sk: `USER#${prefix}${i}`,
+      }));
+    }
+
+    test('250 keys split into 100 + 100 + 50 across three BatchGetCommand calls', async () => {
+      ddbMock.on(BatchGetCommand).resolves({ Responses: { Users: [] } });
+      const builder = createBatchGetBuilder<User>(
+        { Users: { Keys: makeKeys(250) } },
+        client
+      );
+
+      await builder.execute();
+
+      const calls = ddbMock.commandCalls(BatchGetCommand);
+      expect(calls).toHaveLength(3);
+      expect((calls[0]!.args[0].input as any).RequestItems.Users.Keys).toHaveLength(100);
+      expect((calls[1]!.args[0].input as any).RequestItems.Users.Keys).toHaveLength(100);
+      expect((calls[2]!.args[0].input as any).RequestItems.Users.Keys).toHaveLength(50);
+    });
+
+    test('aggregates Responses across chunks into a single flat array', async () => {
+      const page1 = [{ pk: 'USER#u0', sk: 'USER#u0' }];
+      const page2 = [
+        { pk: 'USER#u100', sk: 'USER#u100' },
+        { pk: 'USER#u101', sk: 'USER#u101' },
+      ];
+      ddbMock
+        .on(BatchGetCommand)
+        .resolvesOnce({ Responses: { Users: page1 } })
+        .resolvesOnce({ Responses: { Users: page2 } });
+
+      const builder = createBatchGetBuilder<{ pk: string; sk: string }>(
+        { Users: { Keys: makeKeys(150) } },
+        client
+      );
+
+      const items = await builder.execute();
+      expect(items).toHaveLength(3);
+      expect(items.map((i) => i.pk)).toEqual(['USER#u0', 'USER#u100', 'USER#u101']);
+    });
+
+    test('retries UnprocessedKeys with eventual success', async () => {
+      const keys = makeKeys(2);
+      ddbMock
+        .on(BatchGetCommand)
+        .resolvesOnce({
+          Responses: { Users: [{ pk: 'USER#u0', sk: 'USER#u0' }] },
+          UnprocessedKeys: { Users: { Keys: [keys[1]!] } },
+        })
+        .resolvesOnce({
+          Responses: { Users: [{ pk: 'USER#u1', sk: 'USER#u1' }] },
+        });
+
+      const builder = createBatchGetBuilder<{ pk: string; sk: string }>(
+        { Users: { Keys: keys } },
+        client
+      ).retryBackoffMs(1);
+
+      const items = await builder.execute();
+      expect(items).toHaveLength(2);
+      expect(ddbMock.commandCalls(BatchGetCommand)).toHaveLength(2);
+    });
+
+    test('throws BatchUnprocessedError after exhausting retries', async () => {
+      const keys = makeKeys(1);
+      ddbMock.on(BatchGetCommand).resolves({
+        Responses: { Users: [] },
+        UnprocessedKeys: { Users: { Keys: keys } },
+      });
+
+      const builder = createBatchGetBuilder<User>({ Users: { Keys: keys } }, client)
+        .maxRetries(2)
+        .retryBackoffMs(1);
+
+      await expect(builder.execute()).rejects.toBeInstanceOf(BatchUnprocessedError);
+      // 1 initial + 2 retries
+      expect(ddbMock.commandCalls(BatchGetCommand)).toHaveLength(3);
     });
   });
 });
