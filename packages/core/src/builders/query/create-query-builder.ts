@@ -333,6 +333,14 @@ function createQueryExecutor<Model>(state: QueryState<Model>): QueryExecutor<Mod
       };
     },
 
+    /**
+     * ⚠️ Returns only the FIRST page of results. DynamoDB caps each Query
+     * response at ~1MB (or `Limit` if set). If the matching set is larger,
+     * the remaining items are silently dropped.
+     *
+     * Use {@link executeWithPagination} when you need to drive pagination
+     * yourself, or {@link iterate} to walk every matching item lazily.
+     */
     async execute(): Promise<Model[]> {
       const params = this.dbParams();
       const result = await state.client.send(new QueryCommand(params));
@@ -350,6 +358,20 @@ function createQueryExecutor<Model>(state: QueryState<Model>): QueryExecutor<Mod
         count: result.Count,
         scannedCount: result.ScannedCount,
       };
+    },
+
+    async *iterate(): AsyncIterableIterator<Model> {
+      const baseParams = this.dbParams();
+      let cursor: Record<string, any> | undefined = baseParams.ExclusiveStartKey;
+      do {
+        const params = { ...baseParams, ExclusiveStartKey: cursor };
+        const result = await state.client.send(new QueryCommand(params));
+        state.logger?.log('QueryCommand', params, result);
+        for (const item of (result.Items ?? []) as unknown as Model[]) {
+          yield item;
+        }
+        cursor = result.LastEvaluatedKey;
+      } while (cursor);
     },
   };
 }

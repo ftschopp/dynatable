@@ -2,7 +2,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { buildExpression, AttrBuilder, Condition, createOpBuilder } from '../shared';
-import { ScanBuilder } from './types';
+import { ScanBuilder, ScanResult } from './types';
 import { DynamoDBLogger } from '../../utils/dynamodb-logger';
 
 /**
@@ -205,11 +205,45 @@ export function createScanBuilder<Model>(
       return params;
     },
 
+    /**
+     * ⚠️ Returns only the FIRST page of results. DynamoDB caps each Scan
+     * response at ~1MB (or `Limit` if set). If the matching set is larger,
+     * the remaining items are silently dropped.
+     *
+     * Use {@link executeWithPagination} when you need to drive pagination
+     * yourself, or {@link iterate} to walk every matching item lazily.
+     */
     async execute() {
       const params = build().dbParams();
       const response = await client.send(new ScanCommand(params));
       logger?.log('ScanCommand', params, response);
       return (response.Items || []) as Model[];
+    },
+
+    async executeWithPagination(): Promise<ScanResult<Model>> {
+      const params = build().dbParams();
+      const response = await client.send(new ScanCommand(params));
+      logger?.log('ScanCommand', params, response);
+      return {
+        items: (response.Items ?? []) as Model[],
+        lastEvaluatedKey: response.LastEvaluatedKey,
+        count: response.Count,
+        scannedCount: response.ScannedCount,
+      };
+    },
+
+    async *iterate(): AsyncIterableIterator<Model> {
+      const baseParams = build().dbParams();
+      let cursor: Record<string, any> | undefined = baseParams.ExclusiveStartKey;
+      do {
+        const params = { ...baseParams, ExclusiveStartKey: cursor };
+        const response = await client.send(new ScanCommand(params));
+        logger?.log('ScanCommand', params, response);
+        for (const item of (response.Items ?? []) as Model[]) {
+          yield item;
+        }
+        cursor = response.LastEvaluatedKey;
+      } while (cursor);
     },
   });
 

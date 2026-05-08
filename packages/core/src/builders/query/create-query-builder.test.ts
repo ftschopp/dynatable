@@ -227,6 +227,126 @@ describe('QueryBuilder - Pagination', () => {
       expect(builder2.dbParams().ExclusiveStartKey).toEqual(startKey);
     });
   });
+
+  describe('iterate method', () => {
+    test('walks every page transparently and yields items in order', async () => {
+      const page1 = [
+        { pk: 'USER#1', sk: 'USER#1', name: 'User 1' },
+        { pk: 'USER#2', sk: 'USER#2', name: 'User 2' },
+      ];
+      const page2 = [
+        { pk: 'USER#3', sk: 'USER#3', name: 'User 3' },
+        { pk: 'USER#4', sk: 'USER#4', name: 'User 4' },
+      ];
+      const page3 = [{ pk: 'USER#5', sk: 'USER#5', name: 'User 5' }];
+
+      ddbMock
+        .on(QueryCommand)
+        .resolvesOnce({ Items: page1, LastEvaluatedKey: { pk: 'USER#2', sk: 'USER#2' } })
+        .resolvesOnce({ Items: page2, LastEvaluatedKey: { pk: 'USER#4', sk: 'USER#4' } })
+        .resolvesOnce({ Items: page3 });
+
+      const collected: TestModel[] = [];
+      for await (const item of createQueryBuilder<TestModel>(tableName, client, testModel)
+        .where((attr, op) => op.beginsWith(attr.pk, 'USER#'))
+        .iterate()) {
+        collected.push(item);
+      }
+
+      expect(collected).toHaveLength(5);
+      expect(collected.map((u) => u.name)).toEqual([
+        'User 1',
+        'User 2',
+        'User 3',
+        'User 4',
+        'User 5',
+      ]);
+      expect(ddbMock.calls()).toHaveLength(3);
+    });
+
+    test('forwards ExclusiveStartKey from each response into the next call', async () => {
+      const cursor1 = { pk: 'USER#2', sk: 'USER#2' };
+      const cursor2 = { pk: 'USER#4', sk: 'USER#4' };
+
+      ddbMock
+        .on(QueryCommand)
+        .resolvesOnce({ Items: [{ pk: 'USER#1', sk: 'USER#1' }], LastEvaluatedKey: cursor1 })
+        .resolvesOnce({ Items: [{ pk: 'USER#3', sk: 'USER#3' }], LastEvaluatedKey: cursor2 })
+        .resolvesOnce({ Items: [{ pk: 'USER#5', sk: 'USER#5' }] });
+
+      const iterator = createQueryBuilder<TestModel>(tableName, client, testModel)
+        .where((attr, op) => op.beginsWith(attr.pk, 'USER#'))
+        .iterate();
+
+      // Consume the iterator
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const _ of iterator) {
+        // drain
+      }
+
+      const calls = ddbMock.calls();
+      expect(calls).toHaveLength(3);
+      expect((calls[0]!.args[0].input as any).ExclusiveStartKey).toBeUndefined();
+      expect((calls[1]!.args[0].input as any).ExclusiveStartKey).toEqual(cursor1);
+      expect((calls[2]!.args[0].input as any).ExclusiveStartKey).toEqual(cursor2);
+    });
+
+    test('starts from the user-provided cursor on the first call', async () => {
+      const startKey = { pk: 'USER#10', sk: 'USER#10' };
+
+      ddbMock.on(QueryCommand).resolves({ Items: [{ pk: 'USER#11', sk: 'USER#11' }] });
+
+      const iterator = createQueryBuilder<TestModel>(tableName, client, testModel)
+        .where((attr, op) => op.beginsWith(attr.pk, 'USER#'))
+        .startFrom(startKey)
+        .iterate();
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const _ of iterator) {
+        // drain
+      }
+
+      const calls = ddbMock.calls();
+      expect((calls[0]!.args[0].input as any).ExclusiveStartKey).toEqual(startKey);
+    });
+
+    test('break out of the loop stops further DynamoDB calls', async () => {
+      ddbMock
+        .on(QueryCommand)
+        .resolvesOnce({
+          Items: [
+            { pk: 'USER#1', sk: 'USER#1', name: 'User 1' },
+            { pk: 'USER#2', sk: 'USER#2', name: 'User 2' },
+          ],
+          LastEvaluatedKey: { pk: 'USER#2', sk: 'USER#2' },
+        });
+
+      const collected: TestModel[] = [];
+      for await (const item of createQueryBuilder<TestModel>(tableName, client, testModel)
+        .where((attr, op) => op.beginsWith(attr.pk, 'USER#'))
+        .iterate()) {
+        collected.push(item);
+        if (collected.length >= 1) break;
+      }
+
+      expect(collected).toHaveLength(1);
+      expect(ddbMock.calls()).toHaveLength(1);
+    });
+
+    test('handles an empty result without making extra calls', async () => {
+      ddbMock.on(QueryCommand).resolves({ Items: [] });
+
+      const collected: TestModel[] = [];
+      for await (const item of createQueryBuilder<TestModel>(tableName, client, testModel)
+        .where((attr, op) => op.beginsWith(attr.pk, 'NONE#'))
+        .iterate()) {
+        collected.push(item);
+      }
+
+      expect(collected).toEqual([]);
+      expect(ddbMock.calls()).toHaveLength(1);
+    });
+  });
 });
 
 describe('QueryBuilder - GSI key recognition', () => {

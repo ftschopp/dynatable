@@ -1,4 +1,19 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { ExecutableBuilder, AttrBuilder, OpBuilder, Condition } from '../shared';
+
+/**
+ * A single page of scan results plus metadata for manual pagination.
+ */
+export interface ScanResult<Model> {
+  /** Items returned in this page. */
+  items: Model[];
+  /** Cursor for the next page; `undefined` when there are no more results. */
+  lastEvaluatedKey?: Record<string, any>;
+  /** Number of items returned after applying the filter. */
+  count?: number;
+  /** Number of items examined before applying the filter. */
+  scannedCount?: number;
+}
 
 /**
  * Builder for DynamoDB Scan operations.
@@ -46,4 +61,28 @@ export interface ScanBuilder<Model> extends ExecutableBuilder<Model[]> {
    * Returns a new immutable builder.
    */
   segment(segmentNumber: number, totalSegments: number): ScanBuilder<Model>;
+
+  /**
+   * Executes a single Scan request and returns the page along with the
+   * `lastEvaluatedKey` cursor and counts. Use this when you want to drive
+   * pagination yourself (e.g. expose a cursor to a client).
+   */
+  executeWithPagination(): Promise<ScanResult<Model>>;
+
+  /**
+   * Returns an async iterator that paginates internally and yields one item at
+   * a time. Memory stays at one page; you can `break` out of the loop early.
+   *
+   * `Limit` set via `.limit()` is forwarded to DynamoDB as a *per-request*
+   * cap, not a total cap. To cap the total, count yourself inside the loop:
+   *
+   * ```ts
+   * let n = 0;
+   * for await (const item of builder.iterate()) {
+   *   if (n++ >= 1000) break;
+   *   process(item);
+   * }
+   * ```
+   */
+  iterate(): AsyncIterableIterator<Model>;
 }
