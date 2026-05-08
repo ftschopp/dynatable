@@ -1,3 +1,10 @@
+# @ftschopp/dynatable-core [1.4.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.3.0...@ftschopp/dynatable-core@1.4.0) (2026-05-08)
+
+
+### Features
+
+* **core:** add iterate() async iterator and Scan executeWithPagination ([#21](https://github.com/ftschopp/dynatable/issues/21)) ([c31d458](https://github.com/ftschopp/dynatable/commit/c31d45861e92ba0c52240128084939128a6e4acc)), closes [#4](https://github.com/ftschopp/dynatable/issues/4)
+
 # @ftschopp/dynatable-core [1.3.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.2.5...@ftschopp/dynatable-core@1.3.0) (2026-05-07)
 
 
