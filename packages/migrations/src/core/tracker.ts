@@ -9,6 +9,7 @@ import {
 } from '@aws-sdk/lib-dynamodb';
 import { MigrationTracker, MigrationRecord, SchemaChange, MigrationConfig } from '../types';
 import { compareSemver } from './semver';
+import { MigrationAlreadyAppliedError, MigrationLockLostError } from './errors';
 
 /** Default lock TTL in seconds. Configurable via MigrationConfig.lockTtlSeconds. */
 export const DEFAULT_LOCK_TTL_SECONDS = 300; // 5 minutes
@@ -229,116 +230,160 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
     // Check if migration record already exists (e.g., rolled back or failed)
     const existing = await this.getMigration(version);
 
-    if (existing) {
-      // Update existing record (re-applying a rolled back or failed migration)
-      // Build dynamic update expression - DynamoDB doesn't accept undefined values
-      const setParts = ['#status = :status', 'appliedAt = :appliedAt', '#name = :name'];
-      const expressionValues: Record<string, any> = {
-        ':status': 'applied',
-        ':appliedAt': now,
-        ':name': name,
-      };
+    try {
+      if (existing) {
+        // Update existing record (re-applying a rolled back or failed migration)
+        // Build dynamic update expression - DynamoDB doesn't accept undefined values
+        const setParts = ['#status = :status', 'appliedAt = :appliedAt', '#name = :name'];
+        const expressionValues: Record<string, any> = {
+          ':status': 'applied',
+          ':appliedAt': now,
+          ':name': name,
+        };
 
-      if (schemaDefinition !== undefined) {
-        setParts.push('schemaDefinition = :schemaDef');
-        expressionValues[':schemaDef'] = schemaDefinition;
-      }
-      if (schemaChanges !== undefined) {
-        setParts.push('schemaChanges = :schemaChanges');
-        expressionValues[':schemaChanges'] = schemaChanges;
-      }
-      if (checksum !== undefined) {
-        setParts.push('checksum = :checksum');
-        expressionValues[':checksum'] = checksum;
-      }
+        if (schemaDefinition !== undefined) {
+          setParts.push('schemaDefinition = :schemaDef');
+          expressionValues[':schemaDef'] = schemaDefinition;
+        }
+        if (schemaChanges !== undefined) {
+          setParts.push('schemaChanges = :schemaChanges');
+          expressionValues[':schemaChanges'] = schemaChanges;
+        }
+        if (checksum !== undefined) {
+          setParts.push('checksum = :checksum');
+          expressionValues[':checksum'] = checksum;
+        }
 
-      await this.client.send(
-        new TransactWriteCommand({
-          TransactItems: [
-            this.lockOwnershipCheck(),
-            {
-              Update: {
-                TableName: this.tableName,
-                Key: {
-                  PK: this.trackingPrefix,
-                  SK: version,
-                },
-                UpdateExpression: `SET ${setParts.join(', ')} REMOVE #error, failedAt, rolledBackAt`,
-                ExpressionAttributeNames: {
-                  '#status': 'status',
-                  '#name': 'name',
-                  '#error': 'error',
-                },
-                ExpressionAttributeValues: expressionValues,
-                // Only allow re-applying if not currently applied
-                ConditionExpression: '#status <> :status',
-              },
-            },
-            {
-              Update: {
-                TableName: this.tableName,
-                Key: {
-                  PK: `${this.trackingPrefix}#CURRENT`,
-                  SK: `${this.trackingPrefix}#CURRENT`,
-                },
-                UpdateExpression:
-                  'SET currentVersion = :version, updatedAt = :updatedAt, GSI1SK = :gsi1sk',
-                ExpressionAttributeValues: {
-                  ':version': version,
-                  ':updatedAt': now,
-                  ':gsi1sk': version,
+        await this.client.send(
+          new TransactWriteCommand({
+            TransactItems: [
+              this.lockOwnershipCheck(),
+              {
+                Update: {
+                  TableName: this.tableName,
+                  Key: {
+                    PK: this.trackingPrefix,
+                    SK: version,
+                  },
+                  UpdateExpression: `SET ${setParts.join(', ')} REMOVE #error, failedAt, rolledBackAt`,
+                  ExpressionAttributeNames: {
+                    '#status': 'status',
+                    '#name': 'name',
+                    '#error': 'error',
+                  },
+                  ExpressionAttributeValues: expressionValues,
+                  // Only allow re-applying if not currently applied
+                  ConditionExpression: '#status <> :status',
                 },
               },
-            },
-          ],
-        })
-      );
-    } else {
-      // Create new migration record
-      await this.client.send(
-        new TransactWriteCommand({
-          TransactItems: [
-            this.lockOwnershipCheck(),
-            {
-              Put: {
-                TableName: this.tableName,
-                Item: {
-                  PK: this.trackingPrefix,
-                  SK: version,
-                  version,
-                  name,
-                  timestamp: now,
-                  appliedAt: now,
-                  status: 'applied',
-                  schemaDefinition,
-                  schemaChanges,
-                  checksum,
-                } as MigrationRecord,
-                // Ensure migration wasn't already applied (uniqueness on
-                // SK; PK is shared across all migration rows).
-                ConditionExpression: 'attribute_not_exists(SK)',
-              },
-            },
-            {
-              Update: {
-                TableName: this.tableName,
-                Key: {
-                  PK: `${this.trackingPrefix}#CURRENT`,
-                  SK: `${this.trackingPrefix}#CURRENT`,
-                },
-                UpdateExpression:
-                  'SET currentVersion = :version, updatedAt = :updatedAt, GSI1SK = :gsi1sk',
-                ExpressionAttributeValues: {
-                  ':version': version,
-                  ':updatedAt': now,
-                  ':gsi1sk': version,
+              {
+                Update: {
+                  TableName: this.tableName,
+                  Key: {
+                    PK: `${this.trackingPrefix}#CURRENT`,
+                    SK: `${this.trackingPrefix}#CURRENT`,
+                  },
+                  UpdateExpression:
+                    'SET currentVersion = :version, updatedAt = :updatedAt, GSI1SK = :gsi1sk',
+                  ExpressionAttributeValues: {
+                    ':version': version,
+                    ':updatedAt': now,
+                    ':gsi1sk': version,
+                  },
                 },
               },
-            },
-          ],
-        })
-      );
+            ],
+          })
+        );
+      } else {
+        // Create new migration record
+        await this.client.send(
+          new TransactWriteCommand({
+            TransactItems: [
+              this.lockOwnershipCheck(),
+              {
+                Put: {
+                  TableName: this.tableName,
+                  Item: {
+                    PK: this.trackingPrefix,
+                    SK: version,
+                    version,
+                    name,
+                    timestamp: now,
+                    appliedAt: now,
+                    status: 'applied',
+                    schemaDefinition,
+                    schemaChanges,
+                    checksum,
+                  } as MigrationRecord,
+                  // Ensure migration wasn't already applied (uniqueness on
+                  // SK; PK is shared across all migration rows).
+                  ConditionExpression: 'attribute_not_exists(SK)',
+                },
+              },
+              {
+                Update: {
+                  TableName: this.tableName,
+                  Key: {
+                    PK: `${this.trackingPrefix}#CURRENT`,
+                    SK: `${this.trackingPrefix}#CURRENT`,
+                  },
+                  UpdateExpression:
+                    'SET currentVersion = :version, updatedAt = :updatedAt, GSI1SK = :gsi1sk',
+                  ExpressionAttributeValues: {
+                    ':version': version,
+                    ':updatedAt': now,
+                    ':gsi1sk': version,
+                  },
+                },
+              },
+            ],
+          })
+        );
+      }
+    } catch (err: unknown) {
+      await this.handleMarkAsAppliedCancellation(err, version);
     }
+  }
+
+  /**
+   * Inspect a `TransactionCanceledException` raised by `markAsApplied` and
+   * either swallow it (idempotent re-apply) or re-throw a typed error.
+   *
+   * The TransactWrite items are: [lockOwnershipCheck, migrationRow, currentPointer].
+   * Each item produces an entry in `CancellationReasons`.
+   *   - reasons[0] failing → the lock was lost → MigrationLockLostError.
+   *   - reasons[1] failing → the migration row already exists in a state the
+   *     write refused. Re-fetch the record:
+   *       * status === 'applied' → idempotent re-apply, return silently.
+   *       * other states         → MigrationAlreadyAppliedError with the
+   *         current state, so the caller can decide what to do.
+   */
+  private async handleMarkAsAppliedCancellation(
+    err: unknown,
+    version: string
+  ): Promise<void> {
+    const error = err as { name?: string; CancellationReasons?: Array<{ Code?: string }> } | null;
+    if (error?.name !== 'TransactionCanceledException') {
+      throw err;
+    }
+    const reasons = error.CancellationReasons ?? [];
+    const lockReason = reasons[0];
+    const migrationReason = reasons[1];
+
+    if (lockReason?.Code === 'ConditionalCheckFailed') {
+      throw new MigrationLockLostError(version);
+    }
+    if (migrationReason?.Code === 'ConditionalCheckFailed') {
+      const current = await this.getMigration(version);
+      if (current?.status === 'applied') {
+        // Either we re-tried our own write or another worker applied the same
+        // version. Either way, the desired post-state is already satisfied.
+        return;
+      }
+      throw new MigrationAlreadyAppliedError(version, current?.status);
+    }
+    throw err;
   }
 
   /**

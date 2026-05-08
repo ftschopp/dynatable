@@ -148,3 +148,134 @@ describe('DynamoDBMigrationTracker - tracker writes are gated by lock ownership'
     expect(put.Put.ConditionExpression).toBe('attribute_not_exists(SK)');
   });
 });
+
+describe('DynamoDBMigrationTracker - markAsApplied idempotency (#10)', () => {
+  function cancelledTransactError(reasons: Array<{ Code?: string }>) {
+    return Object.assign(new Error('Transaction cancelled'), {
+      name: 'TransactionCanceledException',
+      CancellationReasons: reasons,
+    });
+  }
+
+  test('returns silently when the cancellation is because the row is already in status=applied', async () => {
+    ddbMock.on(PutCommand).resolves({}); // acquireLock
+    // First getMigration → no record (so we take the Put branch)
+    // Second getMigration (after cancellation) → already applied
+    ddbMock
+      .on(GetCommand)
+      .resolvesOnce({ Item: undefined })
+      .resolvesOnce({
+        Item: {
+          PK: '_SCHEMA#VERSION',
+          SK: '0.1.0',
+          version: '0.1.0',
+          status: 'applied',
+          name: 'init',
+        },
+      });
+
+    // Migration row condition fails (reasons[1]); lock check passed (reasons[0] = None)
+    ddbMock.on(TransactWriteCommand).rejects(
+      cancelledTransactError([{ Code: 'None' }, { Code: 'ConditionalCheckFailed' }])
+    );
+
+    const tracker = makeTracker();
+    await tracker.acquireLock();
+
+    await expect(tracker.markAsApplied('0.1.0', 'init')).resolves.toBeUndefined();
+  });
+
+  test('throws MigrationAlreadyAppliedError when the row exists in a non-applied state', async () => {
+    ddbMock.on(PutCommand).resolves({});
+    ddbMock
+      .on(GetCommand)
+      .resolvesOnce({ Item: undefined })
+      .resolvesOnce({
+        Item: {
+          PK: '_SCHEMA#VERSION',
+          SK: '0.1.0',
+          version: '0.1.0',
+          status: 'failed',
+          name: 'init',
+        },
+      });
+
+    ddbMock.on(TransactWriteCommand).rejects(
+      cancelledTransactError([{ Code: 'None' }, { Code: 'ConditionalCheckFailed' }])
+    );
+
+    const tracker = makeTracker();
+    await tracker.acquireLock();
+
+    await expect(tracker.markAsApplied('0.1.0', 'init')).rejects.toMatchObject({
+      name: 'MigrationAlreadyAppliedError',
+      version: '0.1.0',
+      currentStatus: 'failed',
+    });
+  });
+
+  test('throws MigrationLockLostError when the lock-row ConditionCheck is what failed', async () => {
+    ddbMock.on(PutCommand).resolves({});
+    ddbMock.on(GetCommand).resolves({ Item: undefined });
+
+    ddbMock.on(TransactWriteCommand).rejects(
+      cancelledTransactError([{ Code: 'ConditionalCheckFailed' }, { Code: 'None' }])
+    );
+
+    const tracker = makeTracker();
+    await tracker.acquireLock();
+
+    await expect(tracker.markAsApplied('0.1.0', 'init')).rejects.toMatchObject({
+      name: 'MigrationLockLostError',
+      version: '0.1.0',
+    });
+  });
+
+  test('re-throws unexpected errors unchanged', async () => {
+    ddbMock.on(PutCommand).resolves({});
+    ddbMock.on(GetCommand).resolves({ Item: undefined });
+
+    const boom = Object.assign(new Error('upstream blew up'), { name: 'InternalServerError' });
+    ddbMock.on(TransactWriteCommand).rejects(boom);
+
+    const tracker = makeTracker();
+    await tracker.acquireLock();
+
+    await expect(tracker.markAsApplied('0.1.0', 'init')).rejects.toBe(boom);
+  });
+
+  test('idempotent path also covers the Update branch (existing record was rolled_back, applied by a racing worker)', async () => {
+    ddbMock.on(PutCommand).resolves({});
+    // First getMigration → existing rolled_back record (so we take the Update branch)
+    // Second getMigration (after cancellation) → already applied (race)
+    ddbMock
+      .on(GetCommand)
+      .resolvesOnce({
+        Item: {
+          PK: '_SCHEMA#VERSION',
+          SK: '0.1.0',
+          version: '0.1.0',
+          status: 'rolled_back',
+          name: 'init',
+        },
+      })
+      .resolvesOnce({
+        Item: {
+          PK: '_SCHEMA#VERSION',
+          SK: '0.1.0',
+          version: '0.1.0',
+          status: 'applied',
+          name: 'init',
+        },
+      });
+
+    ddbMock.on(TransactWriteCommand).rejects(
+      cancelledTransactError([{ Code: 'None' }, { Code: 'ConditionalCheckFailed' }])
+    );
+
+    const tracker = makeTracker();
+    await tracker.acquireLock();
+
+    await expect(tracker.markAsApplied('0.1.0', 'init')).resolves.toBeUndefined();
+  });
+});
