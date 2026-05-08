@@ -12,8 +12,9 @@ describe('QueryBuilder - Pagination', () => {
   const tableName = 'TestTable';
 
   interface TestModel {
-    pk: string;
-    sk: string;
+    PK: string;
+    SK: string;
+    username: string;
     name?: string;
     age?: number;
     status?: string;
@@ -38,9 +39,9 @@ describe('QueryBuilder - Pagination', () => {
 
   describe('startFrom method', () => {
     test('should add ExclusiveStartKey to query params', () => {
-      const startKey = { pk: 'USER#alice', sk: 'USER#alice' };
+      const startKey = { PK: 'USER#alice', SK: 'USER#alice' };
       const params = createQueryBuilder<TestModel>(tableName, client, testModel)
-        .where((attr, op) => op.eq(attr.pk, 'USER#alice'))
+        .where((attr, op) => op.eq(attr.username, 'alice'))
         .startFrom(startKey)
         .dbParams();
 
@@ -48,9 +49,9 @@ describe('QueryBuilder - Pagination', () => {
     });
 
     test('should work with all other query options', () => {
-      const startKey = { pk: 'USER#alice', sk: 'USER#alice' };
+      const startKey = { PK: 'USER#alice', SK: 'USER#alice' };
       const params = createQueryBuilder<TestModel>(tableName, client, testModel)
-        .where((attr, op) => op.eq(attr.pk, 'USER#alice'))
+        .where((attr, op) => op.eq(attr.username, 'alice'))
         .startFrom(startKey)
         .limit(10)
         .scanIndexForward(false)
@@ -71,7 +72,7 @@ describe('QueryBuilder - Pagination', () => {
 
     test('should not include ExclusiveStartKey if not set', () => {
       const params = createQueryBuilder<TestModel>(tableName, client, testModel)
-        .where((attr, op) => op.eq(attr.pk, 'USER#alice'))
+        .where((attr, op) => op.eq(attr.username, 'alice'))
         .dbParams();
 
       expect(params.ExclusiveStartKey).toBeUndefined();
@@ -81,10 +82,10 @@ describe('QueryBuilder - Pagination', () => {
   describe('executeWithPagination method', () => {
     test('should return items and lastEvaluatedKey', async () => {
       const mockItems = [
-        { pk: 'USER#alice', sk: 'USER#alice', name: 'Alice' },
-        { pk: 'USER#bob', sk: 'USER#bob', name: 'Bob' },
+        { PK: 'USER#alice', SK: 'USER#alice', name: 'Alice' },
+        { PK: 'USER#bob', SK: 'USER#bob', name: 'Bob' },
       ];
-      const mockLastKey = { pk: 'USER#bob', sk: 'USER#bob' };
+      const mockLastKey = { PK: 'USER#bob', SK: 'USER#bob' };
 
       ddbMock.on(QueryCommand).resolves({
         Items: mockItems,
@@ -94,7 +95,7 @@ describe('QueryBuilder - Pagination', () => {
       });
 
       const result = await createQueryBuilder<TestModel>(tableName, client, testModel)
-        .where((attr, op) => op.eq(attr.pk, 'USER#alice'))
+        .where((attr, op) => op.eq(attr.username, 'alice'))
         .limit(2)
         .executeWithPagination();
 
@@ -105,7 +106,7 @@ describe('QueryBuilder - Pagination', () => {
     });
 
     test('should return undefined lastEvaluatedKey when no more results', async () => {
-      const mockItems = [{ pk: 'USER#alice', sk: 'USER#alice', name: 'Alice' }];
+      const mockItems = [{ PK: 'USER#alice', SK: 'USER#alice', name: 'Alice' }];
 
       ddbMock.on(QueryCommand).resolves({
         Items: mockItems,
@@ -114,7 +115,7 @@ describe('QueryBuilder - Pagination', () => {
       });
 
       const result = await createQueryBuilder<TestModel>(tableName, client, testModel)
-        .where((attr, op) => op.eq(attr.pk, 'USER#alice'))
+        .where((attr, op) => op.eq(attr.username, 'alice'))
         .executeWithPagination();
 
       expect(result.items).toEqual(mockItems);
@@ -129,7 +130,7 @@ describe('QueryBuilder - Pagination', () => {
       });
 
       const result = await createQueryBuilder<TestModel>(tableName, client, testModel)
-        .where((attr, op) => op.eq(attr.pk, 'USER#nonexistent'))
+        .where((attr, op) => op.eq(attr.username, 'nonexistent'))
         .executeWithPagination();
 
       expect(result.items).toEqual([]);
@@ -143,20 +144,20 @@ describe('QueryBuilder - Pagination', () => {
     test('should support manual pagination loop', async () => {
       // First page
       const page1Items = [
-        { pk: 'USER#1', sk: 'USER#1', name: 'User 1' },
-        { pk: 'USER#2', sk: 'USER#2', name: 'User 2' },
+        { PK: 'USER#1', SK: 'USER#1', name: 'User 1' },
+        { PK: 'USER#2', SK: 'USER#2', name: 'User 2' },
       ];
-      const page1LastKey = { pk: 'USER#2', sk: 'USER#2' };
+      const page1LastKey = { PK: 'USER#2', SK: 'USER#2' };
 
       // Second page
       const page2Items = [
-        { pk: 'USER#3', sk: 'USER#3', name: 'User 3' },
-        { pk: 'USER#4', sk: 'USER#4', name: 'User 4' },
+        { PK: 'USER#3', SK: 'USER#3', name: 'User 3' },
+        { PK: 'USER#4', SK: 'USER#4', name: 'User 4' },
       ];
-      const page2LastKey = { pk: 'USER#4', sk: 'USER#4' };
+      const page2LastKey = { PK: 'USER#4', SK: 'USER#4' };
 
       // Third page (last)
-      const page3Items = [{ pk: 'USER#5', sk: 'USER#5', name: 'User 5' }];
+      const page3Items = [{ PK: 'USER#5', SK: 'USER#5', name: 'User 5' }];
 
       ddbMock
         .on(QueryCommand)
@@ -183,7 +184,7 @@ describe('QueryBuilder - Pagination', () => {
 
       // Page 1
       const result1 = await createQueryBuilder<TestModel>(tableName, client, testModel)
-        .where((attr, op) => op.beginsWith(attr.pk, 'USER#'))
+        .where((attr, op) => op.beginsWith(attr.username, ''))
         .limit(2)
         .executeWithPagination();
 
@@ -193,7 +194,7 @@ describe('QueryBuilder - Pagination', () => {
 
       // Page 2
       const result2 = await createQueryBuilder<TestModel>(tableName, client, testModel)
-        .where((attr, op) => op.beginsWith(attr.pk, 'USER#'))
+        .where((attr, op) => op.beginsWith(attr.username, ''))
         .limit(2)
         .startFrom(lastKey)
         .executeWithPagination();
@@ -204,7 +205,7 @@ describe('QueryBuilder - Pagination', () => {
 
       // Page 3
       const result3 = await createQueryBuilder<TestModel>(tableName, client, testModel)
-        .where((attr, op) => op.beginsWith(attr.pk, 'USER#'))
+        .where((attr, op) => op.beginsWith(attr.username, ''))
         .limit(2)
         .startFrom(lastKey)
         .executeWithPagination();
@@ -220,13 +221,77 @@ describe('QueryBuilder - Pagination', () => {
     });
   });
 
+  describe('requires a partition-key condition', () => {
+    test('throws when where() only references non-key attributes', () => {
+      const builder = createQueryBuilder<TestModel>(tableName, client, testModel).where(
+        (attr, op) => op.eq(attr.status, 'active')
+      );
+
+      expect(() => builder.dbParams()).toThrow(/partition key/i);
+    });
+
+    test('error message lists the available key field names from the model', () => {
+      const builder = createQueryBuilder<TestModel>(tableName, client, testModel).where(
+        (attr, op) => op.eq(attr.status, 'active')
+      );
+
+      expect(() => builder.dbParams()).toThrow(/username/);
+    });
+
+    test('error message points users at scan() as the alternative', () => {
+      const builder = createQueryBuilder<TestModel>(tableName, client, testModel).where(
+        (attr, op) => op.eq(attr.status, 'active')
+      );
+
+      expect(() => builder.dbParams()).toThrow(/scan\(\)/);
+    });
+
+    test('error message references the index name when querying a GSI', () => {
+      const modelWithIndex: ModelDefinition = {
+        key: {
+          PK: { type: String, value: 'USER#${username}' },
+          SK: { type: String, value: 'USER#${username}' },
+        },
+        index: {
+          GSI1PK: { type: String, value: 'EMAIL#${email}' },
+          GSI1SK: { type: String, value: 'USER#${username}' },
+        },
+        attributes: {
+          username: { type: String, required: true },
+          email: { type: String, required: true },
+          status: { type: String },
+        },
+      };
+
+      const builder = createQueryBuilder<TestModel & { email: string }>(
+        tableName,
+        client,
+        modelWithIndex
+      )
+        .where((attr, op) => op.eq(attr.status, 'active'))
+        .useIndex('GSI1');
+
+      expect(() => builder.dbParams()).toThrow(/GSI1/);
+      // The hint should mention the GSI's template vars, not the table's.
+      expect(() => builder.dbParams()).toThrow(/email/);
+    });
+
+    test('does NOT throw when the where condition matches a key template variable', () => {
+      const builder = createQueryBuilder<TestModel>(tableName, client, testModel).where(
+        (attr, op) => op.eq(attr.username, 'alice')
+      );
+
+      expect(() => builder.dbParams()).not.toThrow();
+    });
+  });
+
   describe('Immutability', () => {
     test('should create new builder instance when using startFrom', () => {
       const builder1 = createQueryBuilder<TestModel>(tableName, client, testModel).where(
-        (attr, op) => op.eq(attr.pk, 'USER#alice')
+        (attr, op) => op.eq(attr.username, 'alice')
       );
 
-      const startKey = { pk: 'USER#alice', sk: 'USER#alice' };
+      const startKey = { PK: 'USER#alice', SK: 'USER#alice' };
       const builder2 = builder1.startFrom(startKey);
 
       expect(builder1.dbParams().ExclusiveStartKey).toBeUndefined();
@@ -237,24 +302,24 @@ describe('QueryBuilder - Pagination', () => {
   describe('iterate method', () => {
     test('walks every page transparently and yields items in order', async () => {
       const page1 = [
-        { pk: 'USER#1', sk: 'USER#1', name: 'User 1' },
-        { pk: 'USER#2', sk: 'USER#2', name: 'User 2' },
+        { PK: 'USER#1', SK: 'USER#1', name: 'User 1' },
+        { PK: 'USER#2', SK: 'USER#2', name: 'User 2' },
       ];
       const page2 = [
-        { pk: 'USER#3', sk: 'USER#3', name: 'User 3' },
-        { pk: 'USER#4', sk: 'USER#4', name: 'User 4' },
+        { PK: 'USER#3', SK: 'USER#3', name: 'User 3' },
+        { PK: 'USER#4', SK: 'USER#4', name: 'User 4' },
       ];
-      const page3 = [{ pk: 'USER#5', sk: 'USER#5', name: 'User 5' }];
+      const page3 = [{ PK: 'USER#5', SK: 'USER#5', name: 'User 5' }];
 
       ddbMock
         .on(QueryCommand)
-        .resolvesOnce({ Items: page1, LastEvaluatedKey: { pk: 'USER#2', sk: 'USER#2' } })
-        .resolvesOnce({ Items: page2, LastEvaluatedKey: { pk: 'USER#4', sk: 'USER#4' } })
+        .resolvesOnce({ Items: page1, LastEvaluatedKey: { PK: 'USER#2', SK: 'USER#2' } })
+        .resolvesOnce({ Items: page2, LastEvaluatedKey: { PK: 'USER#4', SK: 'USER#4' } })
         .resolvesOnce({ Items: page3 });
 
       const collected: TestModel[] = [];
       for await (const item of createQueryBuilder<TestModel>(tableName, client, testModel)
-        .where((attr, op) => op.beginsWith(attr.pk, 'USER#'))
+        .where((attr, op) => op.beginsWith(attr.username, ''))
         .iterate()) {
         collected.push(item);
       }
@@ -271,17 +336,17 @@ describe('QueryBuilder - Pagination', () => {
     });
 
     test('forwards ExclusiveStartKey from each response into the next call', async () => {
-      const cursor1 = { pk: 'USER#2', sk: 'USER#2' };
-      const cursor2 = { pk: 'USER#4', sk: 'USER#4' };
+      const cursor1 = { PK: 'USER#2', SK: 'USER#2' };
+      const cursor2 = { PK: 'USER#4', SK: 'USER#4' };
 
       ddbMock
         .on(QueryCommand)
-        .resolvesOnce({ Items: [{ pk: 'USER#1', sk: 'USER#1' }], LastEvaluatedKey: cursor1 })
-        .resolvesOnce({ Items: [{ pk: 'USER#3', sk: 'USER#3' }], LastEvaluatedKey: cursor2 })
-        .resolvesOnce({ Items: [{ pk: 'USER#5', sk: 'USER#5' }] });
+        .resolvesOnce({ Items: [{ PK: 'USER#1', SK: 'USER#1' }], LastEvaluatedKey: cursor1 })
+        .resolvesOnce({ Items: [{ PK: 'USER#3', SK: 'USER#3' }], LastEvaluatedKey: cursor2 })
+        .resolvesOnce({ Items: [{ PK: 'USER#5', SK: 'USER#5' }] });
 
       const iterator = createQueryBuilder<TestModel>(tableName, client, testModel)
-        .where((attr, op) => op.beginsWith(attr.pk, 'USER#'))
+        .where((attr, op) => op.beginsWith(attr.username, ''))
         .iterate();
 
       // Consume the iterator
@@ -298,12 +363,12 @@ describe('QueryBuilder - Pagination', () => {
     });
 
     test('starts from the user-provided cursor on the first call', async () => {
-      const startKey = { pk: 'USER#10', sk: 'USER#10' };
+      const startKey = { PK: 'USER#10', SK: 'USER#10' };
 
-      ddbMock.on(QueryCommand).resolves({ Items: [{ pk: 'USER#11', sk: 'USER#11' }] });
+      ddbMock.on(QueryCommand).resolves({ Items: [{ PK: 'USER#11', SK: 'USER#11' }] });
 
       const iterator = createQueryBuilder<TestModel>(tableName, client, testModel)
-        .where((attr, op) => op.beginsWith(attr.pk, 'USER#'))
+        .where((attr, op) => op.beginsWith(attr.username, ''))
         .startFrom(startKey)
         .iterate();
 
@@ -321,15 +386,15 @@ describe('QueryBuilder - Pagination', () => {
         .on(QueryCommand)
         .resolvesOnce({
           Items: [
-            { pk: 'USER#1', sk: 'USER#1', name: 'User 1' },
-            { pk: 'USER#2', sk: 'USER#2', name: 'User 2' },
+            { PK: 'USER#1', SK: 'USER#1', name: 'User 1' },
+            { PK: 'USER#2', SK: 'USER#2', name: 'User 2' },
           ],
-          LastEvaluatedKey: { pk: 'USER#2', sk: 'USER#2' },
+          LastEvaluatedKey: { PK: 'USER#2', SK: 'USER#2' },
         });
 
       const collected: TestModel[] = [];
       for await (const item of createQueryBuilder<TestModel>(tableName, client, testModel)
-        .where((attr, op) => op.beginsWith(attr.pk, 'USER#'))
+        .where((attr, op) => op.beginsWith(attr.username, ''))
         .iterate()) {
         collected.push(item);
         if (collected.length >= 1) break;
@@ -344,7 +409,7 @@ describe('QueryBuilder - Pagination', () => {
 
       const collected: TestModel[] = [];
       for await (const item of createQueryBuilder<TestModel>(tableName, client, testModel)
-        .where((attr, op) => op.beginsWith(attr.pk, 'NONE#'))
+        .where((attr, op) => op.eq(attr.username, 'nonexistent'))
         .iterate()) {
         collected.push(item);
       }
@@ -634,8 +699,9 @@ describe('QueryBuilder - projection placeholders', () => {
   const tableName = 'TestTable';
 
   interface UserModel {
-    pk: string;
-    sk: string;
+    PK: string;
+    SK: string;
+    username: string;
     name?: string;
     status?: string;
     age?: number;
@@ -658,7 +724,7 @@ describe('QueryBuilder - projection placeholders', () => {
 
   test('projects reserved DynamoDB words via #-placeholders', () => {
     const params = createQueryBuilder<UserModel>(tableName, client, userModel)
-      .where((attr, op) => op.eq(attr.pk, 'USER#alice'))
+      .where((attr, op) => op.eq(attr.username, 'alice'))
       .select(['name', 'status', 'type'])
       .dbParams();
 
@@ -673,11 +739,7 @@ describe('QueryBuilder - projection placeholders', () => {
   });
 
   test('merges projection names with key/filter names without clobbering', () => {
-    const params = createQueryBuilder<UserModel & { username: string }>(
-      tableName,
-      client,
-      userModel
-    )
+    const params = createQueryBuilder<UserModel>(tableName, client, userModel)
       .where((attr, op) => op.and(op.eq(attr.username, 'alice'), op.gt(attr.age, 18)))
       .select(['name', 'status'])
       .dbParams();
@@ -696,7 +758,7 @@ describe('QueryBuilder - projection placeholders', () => {
 
   test('shares the same placeholder when an attribute is both projected and filtered (no key duplication)', () => {
     const params = createQueryBuilder<UserModel>(tableName, client, userModel)
-      .where((attr, op) => op.and(op.eq(attr.pk, 'USER#alice'), op.eq(attr.status, 'active')))
+      .where((attr, op) => op.and(op.eq(attr.username, 'alice'), op.eq(attr.status, 'active')))
       .select(['name', 'status'])
       .dbParams();
 
