@@ -12,6 +12,7 @@ export { MigrationLoader } from './core/loader';
 export { MigrationRunner, type RunOptions } from './core/runner';
 export { ConfigLoader, loadConfig } from './core/config';
 export { createDynamoDBClient } from './core/client';
+export { MigrationAlreadyAppliedError, MigrationLockLostError } from './core/errors';
 
 // Template
 export { generateMigrationTemplate } from './templates/migration';
