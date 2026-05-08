@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-migrations [1.2.5](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.2.4...@ftschopp/dynatable-migrations@1.2.5) (2026-05-08)
+
+
+### Bug Fixes
+
+* **migrations:** make markAsApplied idempotent and surface typed errors ([#29](https://github.com/ftschopp/dynatable/issues/29)) ([133b836](https://github.com/ftschopp/dynatable/commit/133b83656c0891a04a155c603f53220dadaa6f87)), closes [#10](https://github.com/ftschopp/dynatable/issues/10)
+
 ## @ftschopp/dynatable-migrations [1.2.4](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.2.3...@ftschopp/dynatable-migrations@1.2.4) (2026-05-08)
 
 
