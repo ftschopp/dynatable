@@ -74,6 +74,23 @@ export interface QueryExecutor<Model> extends ExecutableBuilder<Model[]> {
    * Executes the query and returns result with pagination metadata
    */
   executeWithPagination(): Promise<QueryResult<Model>>;
+
+  /**
+   * Returns an async iterator that paginates internally and yields one item at
+   * a time. Memory stays at one page; you can `break` out of the loop early.
+   *
+   * `Limit` set via `.limit()` is forwarded to DynamoDB as a *per-request*
+   * cap, not a total cap. To cap the total, count yourself inside the loop:
+   *
+   * ```ts
+   * let n = 0;
+   * for await (const item of builder.iterate()) {
+   *   if (n++ >= 1000) break;
+   *   process(item);
+   * }
+   * ```
+   */
+  iterate(): AsyncIterableIterator<Model>;
 }
 
 /**

@@ -1,6 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
+import { ScanCommand } from '@aws-sdk/lib-dynamodb';
+import { mockClient } from 'aws-sdk-client-mock';
 import { createScanBuilder } from './create-scan-builder';
+
+const ddbMock = mockClient(DynamoDBClient);
 
 describe('ScanBuilder', () => {
   const client = new DynamoDBClient({});
@@ -255,6 +259,123 @@ describe('ScanBuilder', () => {
       expect(params.FilterExpression).toMatch(/#age BETWEEN :age_low_\d+ AND :age_high_\d+/);
       expect(Object.values(params.ExpressionAttributeValues || {})).toContain(18);
       expect(Object.values(params.ExpressionAttributeValues || {})).toContain(65);
+    });
+  });
+
+  describe('executeWithPagination', () => {
+    beforeEach(() => {
+      ddbMock.reset();
+    });
+
+    test('returns items, lastEvaluatedKey and counts', async () => {
+      const items = [
+        { pk: 'USER#alice', sk: 'USER#alice', name: 'Alice' },
+        { pk: 'USER#bob', sk: 'USER#bob', name: 'Bob' },
+      ];
+      const lastKey = { pk: 'USER#bob', sk: 'USER#bob' };
+
+      ddbMock.on(ScanCommand).resolves({
+        Items: items,
+        LastEvaluatedKey: lastKey,
+        Count: 2,
+        ScannedCount: 5,
+      });
+
+      const result = await createScanBuilder<TestModel>(tableName, client).executeWithPagination();
+
+      expect(result.items).toEqual(items);
+      expect(result.lastEvaluatedKey).toEqual(lastKey);
+      expect(result.count).toBe(2);
+      expect(result.scannedCount).toBe(5);
+    });
+
+    test('returns undefined lastEvaluatedKey on the final page', async () => {
+      ddbMock.on(ScanCommand).resolves({ Items: [], Count: 0, ScannedCount: 0 });
+
+      const result = await createScanBuilder<TestModel>(tableName, client).executeWithPagination();
+
+      expect(result.items).toEqual([]);
+      expect(result.lastEvaluatedKey).toBeUndefined();
+    });
+  });
+
+  describe('iterate', () => {
+    beforeEach(() => {
+      ddbMock.reset();
+    });
+
+    test('walks every page transparently and yields items in order', async () => {
+      const page1 = [
+        { pk: 'USER#1', sk: 'USER#1', name: 'User 1' },
+        { pk: 'USER#2', sk: 'USER#2', name: 'User 2' },
+      ];
+      const page2 = [{ pk: 'USER#3', sk: 'USER#3', name: 'User 3' }];
+
+      ddbMock
+        .on(ScanCommand)
+        .resolvesOnce({ Items: page1, LastEvaluatedKey: { pk: 'USER#2', sk: 'USER#2' } })
+        .resolvesOnce({ Items: page2 });
+
+      const collected: TestModel[] = [];
+      for await (const item of createScanBuilder<TestModel>(tableName, client).iterate()) {
+        collected.push(item);
+      }
+
+      expect(collected.map((u) => u.name)).toEqual(['User 1', 'User 2', 'User 3']);
+      expect(ddbMock.calls()).toHaveLength(2);
+    });
+
+    test('forwards LastEvaluatedKey from each response into the next call', async () => {
+      const cursor1 = { pk: 'USER#2', sk: 'USER#2' };
+
+      ddbMock
+        .on(ScanCommand)
+        .resolvesOnce({ Items: [{ pk: 'USER#1', sk: 'USER#1' }], LastEvaluatedKey: cursor1 })
+        .resolvesOnce({ Items: [{ pk: 'USER#3', sk: 'USER#3' }] });
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const _ of createScanBuilder<TestModel>(tableName, client).iterate()) {
+        // drain
+      }
+
+      const calls = ddbMock.calls();
+      expect((calls[0]!.args[0].input as any).ExclusiveStartKey).toBeUndefined();
+      expect((calls[1]!.args[0].input as any).ExclusiveStartKey).toEqual(cursor1);
+    });
+
+    test('starts from the user-provided cursor on the first call', async () => {
+      const startKey = { pk: 'USER#10', sk: 'USER#10' };
+
+      ddbMock.on(ScanCommand).resolves({ Items: [{ pk: 'USER#11', sk: 'USER#11' }] });
+
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      for await (const _ of createScanBuilder<TestModel>(tableName, client)
+        .startFrom(startKey)
+        .iterate()) {
+        // drain
+      }
+
+      const calls = ddbMock.calls();
+      expect((calls[0]!.args[0].input as any).ExclusiveStartKey).toEqual(startKey);
+    });
+
+    test('break out of the loop stops further DynamoDB calls', async () => {
+      ddbMock.on(ScanCommand).resolvesOnce({
+        Items: [
+          { pk: 'USER#1', sk: 'USER#1' },
+          { pk: 'USER#2', sk: 'USER#2' },
+        ],
+        LastEvaluatedKey: { pk: 'USER#2', sk: 'USER#2' },
+      });
+
+      const collected: TestModel[] = [];
+      for await (const item of createScanBuilder<TestModel>(tableName, client).iterate()) {
+        collected.push(item);
+        if (collected.length >= 1) break;
+      }
+
+      expect(collected).toHaveLength(1);
+      expect(ddbMock.calls()).toHaveLength(1);
     });
   });
 });
