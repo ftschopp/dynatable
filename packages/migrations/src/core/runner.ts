@@ -14,6 +14,7 @@ import {
 import { MigrationConfig, MigrationContext, MigrationFile, MigrationStatus } from '../types';
 import { DynamoDBMigrationTracker } from './tracker';
 import { MigrationLoader } from './loader';
+import { compareSemver } from './semver';
 
 export interface RunOptions {
   limit?: number;
@@ -157,7 +158,7 @@ export class MigrationRunner {
       const appliedMigrations = await this.tracker.getAppliedMigrations();
       const applied = appliedMigrations
         .filter((m) => m.status === 'applied')
-        .sort((a, b) => b.version.localeCompare(a.version))
+        .sort((a, b) => compareSemver(b.version, a.version))
         .slice(0, steps);
 
       if (applied.length === 0) {

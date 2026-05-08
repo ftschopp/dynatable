@@ -8,6 +8,7 @@ import {
   TransactWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { MigrationTracker, MigrationRecord, SchemaChange, MigrationConfig } from '../types';
+import { compareSemver } from './semver';
 
 const LOCK_TTL_SECONDS = 300; // 5 minutes
 
@@ -294,7 +295,7 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
     const migrations = await this.getAppliedMigrations();
     const appliedMigrations = migrations
       .filter((m) => m.status === 'applied' && m.version !== version)
-      .sort((a, b) => b.version.localeCompare(a.version));
+      .sort((a, b) => compareSemver(b.version, a.version));
 
     const previousVersion = appliedMigrations[0]?.version || 'v0000';
 
