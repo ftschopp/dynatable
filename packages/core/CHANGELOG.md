@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-core [1.4.2](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.4.1...@ftschopp/dynatable-core@1.4.2) (2026-05-08)
+
+
+### Bug Fixes
+
+* **core:** throw at dbParams() when Query has no partition-key condition ([#27](https://github.com/ftschopp/dynatable/issues/27)) ([2f93385](https://github.com/ftschopp/dynatable/commit/2f933850677956a198077421eaeb032372d50724)), closes [#8](https://github.com/ftschopp/dynatable/issues/8)
+
 ## @ftschopp/dynatable-core [1.4.1](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.4.0...@ftschopp/dynatable-core@1.4.1) (2026-05-08)
 
 
