@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-core [1.4.1](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.4.0...@ftschopp/dynatable-core@1.4.1) (2026-05-08)
+
+
+### Bug Fixes
+
+* **core:** use ExpressionAttributeNames placeholders for projections ([#25](https://github.com/ftschopp/dynatable/issues/25)) ([0e14ebd](https://github.com/ftschopp/dynatable/commit/0e14ebd64cfc58eb2b2353fa7678239bdddb22a6)), closes [#5](https://github.com/ftschopp/dynatable/issues/5)
+
 # @ftschopp/dynatable-core [1.4.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.3.0...@ftschopp/dynatable-core@1.4.0) (2026-05-08)
 
 
