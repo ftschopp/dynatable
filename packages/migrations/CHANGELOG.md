@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-migrations [1.2.4](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.2.3...@ftschopp/dynatable-migrations@1.2.4) (2026-05-08)
+
+
+### Bug Fixes
+
+* **migrations:** add lock refresh and gate tracker writes on ownership ([#28](https://github.com/ftschopp/dynatable/issues/28)) ([5d9d033](https://github.com/ftschopp/dynatable/commit/5d9d0336c0e79179208209906f4c72797eb5f275)), closes [#9](https://github.com/ftschopp/dynatable/issues/9)
+
 ## @ftschopp/dynatable-migrations [1.2.3](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.2.2...@ftschopp/dynatable-migrations@1.2.3) (2026-05-08)
 
 
