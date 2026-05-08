@@ -264,6 +264,31 @@ function createQueryExecutor<Model>(state: QueryState<Model>): QueryExecutor<Mod
         state.indexName
       );
 
+      // DynamoDB Query requires at least a partition-key condition. If
+      // separation didn't pick anything as a key condition, the caller is
+      // either filtering on non-key attributes (which means they want
+      // scan()) or referencing the wrong attribute name. Fail loudly here
+      // instead of letting the SDK reject the request at execute time.
+      if (keyConditions.length === 0) {
+        const keyTemplates = state.indexName
+          ? Object.entries(state.model?.index ?? {})
+              .filter(([keyName]) => keyName.startsWith(state.indexName!))
+              .map(([, def]) => def.value)
+          : Object.values(state.model?.key ?? {}).map((def) => def.value);
+        const templateVars = Array.from(
+          new Set(keyTemplates.flatMap((tpl) => extractTemplateVars(tpl)))
+        );
+        const indexHint = state.indexName ? ` on index "${state.indexName}"` : '';
+        const fieldsHint =
+          templateVars.length > 0
+            ? ` Expected a condition on one of: ${templateVars.join(', ')}.`
+            : '';
+        throw new Error(
+          `Query requires a condition on the partition key${indexHint}.${fieldsHint} ` +
+            `For non-key filtering use scan() instead.`
+        );
+      }
+
       // Build KeyConditionExpression (simple AND)
       const keyExpr = buildSimpleAndExpression(keyConditions);
 
