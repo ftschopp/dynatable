@@ -5,6 +5,9 @@ node_modules
 .pnp
 .pnp.js
 
+# Disallow npm lockfile — this repo uses Yarn (see "packageManager" in package.json)
+package-lock.json
+
 # Local env files
 .env
 .env.local
