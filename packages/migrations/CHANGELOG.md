@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-migrations [1.2.3](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.2.2...@ftschopp/dynatable-migrations@1.2.3) (2026-05-08)
+
+
+### Bug Fixes
+
+* **migrations:** use compareSemver instead of localeCompare for version sorting ([#24](https://github.com/ftschopp/dynatable/issues/24)) ([5d19158](https://github.com/ftschopp/dynatable/commit/5d19158089cf720c69c5831b7406fcf63aa3b6fc)), closes [#16](https://github.com/ftschopp/dynatable/issues/16) [#7](https://github.com/ftschopp/dynatable/issues/7)
+
 ## @ftschopp/dynatable-migrations [1.2.2](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.2.1...@ftschopp/dynatable-migrations@1.2.2) (2026-05-05)
 
 
