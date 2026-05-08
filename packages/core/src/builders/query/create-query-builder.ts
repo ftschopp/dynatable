@@ -4,6 +4,7 @@ import { QueryCommand, QueryCommandInput } from '@aws-sdk/lib-dynamodb';
 import { Condition, AttrBuilder, AttrRef } from '../shared';
 import { createOpBuilder } from '../shared/operators';
 import { buildExpression } from '../shared/conditions';
+import { buildProjectionExpression } from '../shared/projection';
 import { QueryBuilder, QueryExecutor, QueryResult } from './types';
 import { ModelDefinition } from '../../core/types';
 import { extractTemplateVars } from '../../utils/model-utils';
@@ -294,7 +295,7 @@ function createQueryExecutor<Model>(state: QueryState<Model>): QueryExecutor<Mod
       }
 
       // Merge attribute names and values from both expressions
-      const allNames = {
+      const allNames: Record<string, string> = {
         ...(keyExpr.names ?? {}),
         ...(filterExpr.names ?? {}),
       };
@@ -302,6 +303,19 @@ function createQueryExecutor<Model>(state: QueryState<Model>): QueryExecutor<Mod
         ...(keyExpr.values ?? {}),
         ...(filterExpr.values ?? {}),
       };
+
+      // Build ProjectionExpression with placeholders so reserved words
+      // (name, date, status, type, …) don't blow up at DynamoDB.
+      // Idempotent merge: filter/key and projection placeholders both map
+      // `#name → name`, so collisions resolve to the same value.
+      let projectionExpression: string | undefined;
+      if (state.projection && state.projection.length > 0) {
+        const proj = buildProjectionExpression(
+          (state.projection as (keyof Model)[]).map((a) => String(a))
+        );
+        projectionExpression = proj.ProjectionExpression;
+        Object.assign(allNames, proj.ExpressionAttributeNames);
+      }
 
       return {
         TableName: state.tableName,
@@ -322,10 +336,9 @@ function createQueryExecutor<Model>(state: QueryState<Model>): QueryExecutor<Mod
         ...(state.scanForward !== undefined && {
           ScanIndexForward: state.scanForward,
         }),
-        ...(state.projection &&
-          state.projection.length > 0 && {
-            ProjectionExpression: state.projection.join(', '),
-          }),
+        ...(projectionExpression && {
+          ProjectionExpression: projectionExpression,
+        }),
         ...(state.consistentReadEnabled && { ConsistentRead: true }),
         ...(state.exclusiveStartKey && {
           ExclusiveStartKey: state.exclusiveStartKey,

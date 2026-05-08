@@ -346,7 +346,14 @@ describe('Should test dbParams function builder', () => {
       .dbParams();
 
     expect(params.TableName).toBe('InstagramClone');
-    expect(params.ProjectionExpression).toBe('photoId, url, likesCount');
+    expect(params.ProjectionExpression).toBe('#photoId, #url, #likesCount');
+    expect(params.ExpressionAttributeNames).toEqual(
+      expect.objectContaining({
+        '#photoId': 'photoId',
+        '#url': 'url',
+        '#likesCount': 'likesCount',
+      })
+    );
   });
 
   test('Query Likes by photoId', async () => {
@@ -786,9 +793,16 @@ describe('Should test dbParams function builder', () => {
       .select(['username', 'photoId', 'likesCount'])
       .dbParams();
 
-    expect(params.ProjectionExpression).toBe('username, photoId, likesCount');
+    expect(params.ProjectionExpression).toBe('#username, #photoId, #likesCount');
     expect(params.FilterExpression).toBe('#_type = :_type');
     expect(params.ExpressionAttributeValues).toMatchObject({ ':_type': 'Photo' });
+    expect(params.ExpressionAttributeNames).toEqual(
+      expect.objectContaining({
+        '#username': 'username',
+        '#photoId': 'photoId',
+        '#likesCount': 'likesCount',
+      })
+    );
   });
 
   test('SCAN Photos with limit', async () => {
@@ -838,7 +852,7 @@ describe('Should test dbParams function builder', () => {
     expect(params.FilterExpression).toMatch(/size\(#content\) > :content_size_\d+/);
     expect(params.FilterExpression).toMatch(/#_type = :_type/);
     expect(params.ExpressionAttributeValues).toMatchObject({ ':_type': 'Comment' });
-    expect(params.ProjectionExpression).toBe('photoId, commentId, content');
+    expect(params.ProjectionExpression).toBe('#photoId, #commentId, #content');
     expect(params.Limit).toBe(50);
   });
 
@@ -872,7 +886,12 @@ describe('Should test dbParams function builder', () => {
           { PK: 'USER#alice', SK: 'USER#alice' },
           { PK: 'USER#bob', SK: 'USER#bob' },
         ],
-        ProjectionExpression: 'username, name, followerCount',
+        ProjectionExpression: '#username, #name, #followerCount',
+        ExpressionAttributeNames: {
+          '#username': 'username',
+          '#name': 'name',
+          '#followerCount': 'followerCount',
+        },
       },
     });
   });

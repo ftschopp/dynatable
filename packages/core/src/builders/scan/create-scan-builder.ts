@@ -1,7 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { ScanCommand } from '@aws-sdk/lib-dynamodb';
-import { buildExpression, AttrBuilder, Condition, createOpBuilder } from '../shared';
+import {
+  buildExpression,
+  AttrBuilder,
+  Condition,
+  createOpBuilder,
+  buildProjectionExpression,
+} from '../shared';
 import { ScanBuilder, ScanResult } from './types';
 import { DynamoDBLogger } from '../../utils/dynamodb-logger';
 
@@ -155,10 +161,18 @@ export function createScanBuilder<Model>(
         expressionAttributeValues = result.values;
       }
 
-      // Build ProjectionExpression
+      // Build ProjectionExpression with placeholders so reserved words
+      // (name, date, status, type, …) don't blow up at DynamoDB.
       let projectionExpression = '';
       if (projectionAttrs.length > 0) {
-        projectionExpression = projectionAttrs.map((attr) => String(attr)).join(', ');
+        const proj = buildProjectionExpression(projectionAttrs.map((attr) => String(attr)));
+        projectionExpression = proj.ProjectionExpression;
+        // Idempotent merge: filter and projection placeholders both map
+        // `#name → name`, so collisions resolve to the same value.
+        expressionAttributeNames = {
+          ...proj.ExpressionAttributeNames,
+          ...expressionAttributeNames,
+        };
       }
 
       const params: any = {

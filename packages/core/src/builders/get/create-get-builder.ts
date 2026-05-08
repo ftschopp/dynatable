@@ -1,32 +1,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { GetCommand, GetCommandInput, GetCommandOutput } from '@aws-sdk/lib-dynamodb';
+import { buildProjectionExpression } from '../shared';
 import { GetBuilder } from './types';
 import { DynamoDBLogger } from '../../utils/dynamodb-logger';
-
-/**
- * Builds a ProjectionExpression with proper ExpressionAttributeNames
- * to handle reserved words and special characters.
- */
-function buildProjectionExpression(attrs: string[]): {
-  ProjectionExpression: string;
-  ExpressionAttributeNames: Record<string, string>;
-} {
-  const names: Record<string, string> = {};
-  const projectionParts: string[] = [];
-
-  attrs.forEach((attr) => {
-    // Use a placeholder for the attribute name to avoid reserved word conflicts
-    const placeholder = `#${attr}`;
-    names[placeholder] = attr;
-    projectionParts.push(placeholder);
-  });
-
-  return {
-    ProjectionExpression: projectionParts.join(', '),
-    ExpressionAttributeNames: names,
-  };
-}
 
 /**
  * Creates a GetBuilder to retrieve an item by its key.

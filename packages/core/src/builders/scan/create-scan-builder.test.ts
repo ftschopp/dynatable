@@ -77,17 +77,52 @@ describe('ScanBuilder', () => {
         .select(['name', 'age', 'status'])
         .dbParams();
 
-      expect(params.ProjectionExpression).toBe('name, age, status');
+      expect(params.ProjectionExpression).toBe('#name, #age, #status');
+      expect(params.ExpressionAttributeNames).toEqual({
+        '#name': 'name',
+        '#age': 'age',
+        '#status': 'status',
+      });
     });
 
-    test('should build params with select and filter', () => {
+    test('should build params with select and filter, merging ExpressionAttributeNames', () => {
       const params = createScanBuilder<TestModel>(tableName, client)
         .select(['name', 'age'])
-        .filter((attr, op) => op.gt(attr.age, 18))
+        .filter((attr, op) => op.gt(attr.score, 50))
         .dbParams();
 
-      expect(params.ProjectionExpression).toBe('name, age');
-      expect(params.FilterExpression).toMatch(/#age > :age_\d+/);
+      expect(params.ProjectionExpression).toBe('#name, #age');
+      expect(params.FilterExpression).toMatch(/#score > :score_\d+/);
+      // Merged names from filter (#score) + projection (#name, #age)
+      expect(params.ExpressionAttributeNames).toEqual({
+        '#name': 'name',
+        '#age': 'age',
+        '#score': 'score',
+      });
+    });
+
+    test('placeholders survive when projected attribute is also referenced in the filter (no key collision)', () => {
+      const params = createScanBuilder<TestModel>(tableName, client)
+        .select(['name', 'age'])
+        .filter((attr, op) => op.eq(attr.name, 'alice'))
+        .dbParams();
+
+      expect(params.ProjectionExpression).toBe('#name, #age');
+      // #name resolves to "name" — filter and projection share the placeholder.
+      expect(params.ExpressionAttributeNames!['#name']).toBe('name');
+      expect(params.ExpressionAttributeNames!['#age']).toBe('age');
+    });
+
+    test('reserved DynamoDB words like "name", "date", "status", "type" can be projected', () => {
+      const params = createScanBuilder<TestModel>(tableName, client)
+        .select(['name', 'status'])
+        .dbParams();
+
+      expect(params.ProjectionExpression).toBe('#name, #status');
+      expect(params.ExpressionAttributeNames).toEqual({
+        '#name': 'name',
+        '#status': 'status',
+      });
     });
   });
 
@@ -184,7 +219,7 @@ describe('ScanBuilder', () => {
 
       expect(params.TableName).toBe(tableName);
       expect(params.FilterExpression).toMatch(/\(#age > :age_\d+\) AND \(#status = :status_\d+\)/);
-      expect(params.ProjectionExpression).toBe('name, age, status');
+      expect(params.ProjectionExpression).toBe('#name, #age, #status');
       expect(params.Limit).toBe(100);
       expect(params.ConsistentRead).toBe(true);
       expect(params.IndexName).toBe('GSI1');
