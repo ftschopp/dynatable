@@ -5,6 +5,7 @@ import {
   BatchGetCommandInput,
   BatchGetCommandOutput,
 } from '@aws-sdk/lib-dynamodb';
+import { buildProjectionExpression } from '../shared';
 import { BatchGetBuilder } from './types';
 import { DynamoDBLogger } from '../../utils/dynamodb-logger';
 
@@ -63,13 +64,19 @@ export function createBatchGetBuilder<Model>(
      * Build the underlying DynamoDB input parameters.
      */
     dbParams(): BatchGetCommandInput {
-      // Apply projection and consistentRead to all tables
+      // Build the projection once (with #-placeholders so reserved words
+      // like name/date/status/type don't blow up at DynamoDB) and reuse
+      // it per-table.
+      const proj =
+        projection.length > 0 ? buildProjectionExpression(projection.map(String)) : undefined;
+
       const enhancedRequestItems = Object.entries(requestItems).reduce(
         (acc, [tableName, tableRequest]) => {
           acc[tableName] = {
             Keys: tableRequest.Keys,
-            ...(projection.length > 0 && {
-              ProjectionExpression: projection.join(', '),
+            ...(proj && {
+              ProjectionExpression: proj.ProjectionExpression,
+              ExpressionAttributeNames: proj.ExpressionAttributeNames,
             }),
             ...(isConsistent && { ConsistentRead: true }),
           };

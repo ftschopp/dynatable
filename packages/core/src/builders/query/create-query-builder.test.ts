@@ -60,7 +60,13 @@ describe('QueryBuilder - Pagination', () => {
       expect(params.ExclusiveStartKey).toEqual(startKey);
       expect(params.Limit).toBe(10);
       expect(params.ScanIndexForward).toBe(false);
-      expect(params.ProjectionExpression).toBe('name, age');
+      expect(params.ProjectionExpression).toBe('#name, #age');
+      expect(params.ExpressionAttributeNames).toEqual(
+        expect.objectContaining({
+          '#name': 'name',
+          '#age': 'age',
+        })
+      );
     });
 
     test('should not include ExclusiveStartKey if not set', () => {
@@ -620,5 +626,83 @@ describe('QueryBuilder - entity type auto filter', () => {
     expect(params.ExpressionAttributeNames?.['#_type']).toBe('_type');
     expect(params.ExpressionAttributeNames?.['#status']).toBe('status');
     expect(params.ExpressionAttributeValues?.[':_type']).toBe('AirportPersonnel');
+  });
+});
+
+describe('QueryBuilder - projection placeholders', () => {
+  const client = new DynamoDBClient({});
+  const tableName = 'TestTable';
+
+  interface UserModel {
+    pk: string;
+    sk: string;
+    name?: string;
+    status?: string;
+    age?: number;
+    type?: string;
+  }
+
+  const userModel: ModelDefinition = {
+    key: {
+      PK: { type: String, value: 'USER#${username}' },
+      SK: { type: String, value: 'USER#${username}' },
+    },
+    attributes: {
+      username: { type: String, required: true },
+      name: { type: String },
+      status: { type: String },
+      age: { type: Number },
+      type: { type: String },
+    },
+  };
+
+  test('projects reserved DynamoDB words via #-placeholders', () => {
+    const params = createQueryBuilder<UserModel>(tableName, client, userModel)
+      .where((attr, op) => op.eq(attr.pk, 'USER#alice'))
+      .select(['name', 'status', 'type'])
+      .dbParams();
+
+    expect(params.ProjectionExpression).toBe('#name, #status, #type');
+    expect(params.ExpressionAttributeNames).toEqual(
+      expect.objectContaining({
+        '#name': 'name',
+        '#status': 'status',
+        '#type': 'type',
+      })
+    );
+  });
+
+  test('merges projection names with key/filter names without clobbering', () => {
+    const params = createQueryBuilder<UserModel & { username: string }>(
+      tableName,
+      client,
+      userModel
+    )
+      .where((attr, op) => op.and(op.eq(attr.username, 'alice'), op.gt(attr.age, 18)))
+      .select(['name', 'status'])
+      .dbParams();
+
+    // Projection placeholders (#name, #status) merged with key (#PK from
+    // the username→PK template rewrite) and filter (#age) — none clobbered.
+    expect(params.ExpressionAttributeNames).toEqual(
+      expect.objectContaining({
+        '#name': 'name',
+        '#status': 'status',
+        '#PK': 'PK',
+        '#age': 'age',
+      })
+    );
+  });
+
+  test('shares the same placeholder when an attribute is both projected and filtered (no key duplication)', () => {
+    const params = createQueryBuilder<UserModel>(tableName, client, userModel)
+      .where((attr, op) => op.and(op.eq(attr.pk, 'USER#alice'), op.eq(attr.status, 'active')))
+      .select(['name', 'status'])
+      .dbParams();
+
+    // The map has #status exactly once, mapping to "status".
+    expect(params.ExpressionAttributeNames!['#status']).toBe('status');
+    expect(params.ProjectionExpression).toBe('#name, #status');
+    expect(params.FilterExpression).toMatch(/#status = :status_\d+/);
   });
 });

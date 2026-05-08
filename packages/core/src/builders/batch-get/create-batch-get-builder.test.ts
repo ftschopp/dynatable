@@ -64,7 +64,12 @@ describe('BatchGetBuilder', () => {
               { pk: 'USER#alice', sk: 'USER#alice' },
               { pk: 'USER#bob', sk: 'USER#bob' },
             ],
-            ProjectionExpression: 'username, name, followerCount',
+            ProjectionExpression: '#username, #name, #followerCount',
+            ExpressionAttributeNames: {
+              '#username': 'username',
+              '#name': 'name',
+              '#followerCount': 'followerCount',
+            },
           },
         },
       });
@@ -155,9 +160,32 @@ describe('BatchGetBuilder', () => {
               { pk: 'USER#alice', sk: 'USER#alice' },
               { pk: 'USER#bob', sk: 'USER#bob' },
             ],
-            ProjectionExpression: 'username, name',
+            ProjectionExpression: '#username, #name',
+            ExpressionAttributeNames: {
+              '#username': 'username',
+              '#name': 'name',
+            },
             ConsistentRead: true,
           },
+        },
+      });
+    });
+
+    test('reserved DynamoDB words like "name", "date", "status" can be projected', () => {
+      const requestItems = {
+        Users: {
+          Keys: [{ pk: 'USER#alice', sk: 'USER#alice' }],
+        },
+      };
+
+      const builder = createBatchGetBuilder<User>(requestItems, client).select(['name']);
+      const params = builder.dbParams();
+
+      expect(params.RequestItems!['Users']).toEqual({
+        Keys: [{ pk: 'USER#alice', sk: 'USER#alice' }],
+        ProjectionExpression: '#name',
+        ExpressionAttributeNames: {
+          '#name': 'name',
         },
       });
     });
