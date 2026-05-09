@@ -9,7 +9,7 @@ type VersionBumpType = 'major' | 'minor' | 'patch';
  * Get next version based on bump type
  */
 async function getNextVersion(loader: MigrationLoader, bumpType: VersionBumpType): Promise<string> {
-  const migrations = await loader['loadMigrations']();
+  const migrations = await loader.loadMigrations();
 
   const lastMigration = migrations.length > 0 ? migrations[migrations.length - 1] : null;
   const lastVersion = lastMigration?.version;

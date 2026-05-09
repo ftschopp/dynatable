@@ -7,6 +7,7 @@ import { runMigrations } from './commands/up';
 import { rollbackMigrations } from './commands/down';
 import { showStatus } from './commands/status';
 import { initProject } from './commands/init';
+import { forceUnlock } from './commands/unlock';
 import { parsePositiveInt } from './cli-utils';
 
 // Read version from package.json
@@ -82,10 +83,11 @@ program
   .option('-c, --config <path>', 'Path to config file')
   .option('-s, --steps <number>', 'Number of migrations to rollback', parsePositiveInt('steps'), 1)
   .option('-d, --dry-run', 'Show what would be done without making changes')
+  .option('-y, --yes', 'Skip the interactive confirmation prompt')
   .action(async (options) => {
     try {
       const config = await loadConfig(options.config);
-      await rollbackMigrations(config, options.steps, options.dryRun);
+      await rollbackMigrations(config, options.steps, options.dryRun, options.yes);
     } catch (error: any) {
       console.error(`Error: ${error.message}`);
       process.exit(1);
@@ -101,6 +103,24 @@ program
     try {
       const config = await loadConfig(options.config);
       await showStatus(config);
+    } catch (error: any) {
+      console.error(`Error: ${error.message}`);
+      process.exit(1);
+    }
+  });
+
+// Unlock command — for emergency recovery when a migration process died
+// hard without releasing its lock. The 5-minute TTL eventually clears
+// the lock anyway, but waiting that long during an incident is rough.
+program
+  .command('unlock')
+  .description('Forcefully release the migration lock (emergency recovery)')
+  .option('-c, --config <path>', 'Path to config file')
+  .option('-y, --yes', 'Skip the interactive confirmation prompt')
+  .action(async (options) => {
+    try {
+      const config = await loadConfig(options.config);
+      await forceUnlock(config, options.yes);
     } catch (error: any) {
       console.error(`Error: ${error.message}`);
       process.exit(1);
