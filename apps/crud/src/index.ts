@@ -117,6 +117,14 @@ const InstagramSchema = {
     //
     //  frames   → Array of objects (each frame has url, duration, mediaType)
     //  location → Nested object (city, country, lat, lng)
+    //
+    // NOTE: Story shares the same PK template as Photo (`UP#${username}`),
+    // so a `Photo.query()` on a username will read both Photos and Stories
+    // at the DynamoDB level — the auto-injected `_type` filter strips the
+    // wrong-typed items client-side, so results are CORRECT but RCU is paid
+    // for both. In production prefer distinct PK prefixes per entity (e.g.
+    // `US#${username}` for Stories) when entities have very different
+    // access volumes.
     // -----------------------------------------------------------------------
     Story: {
       key: {
@@ -155,6 +163,10 @@ const InstagramSchema = {
   },
   params: {
     timestamps: true,
+    // Strip internal single-table keys (PK, SK, _type, GSI1PK, GSI1SK) from
+    // returned items so console output reflects the domain model, not the
+    // storage layer. Disable if you need the raw keys (e.g. for debugging).
+    cleanInternalKeys: true,
   },
 } as const;
 
@@ -319,11 +331,16 @@ async function runExamples() {
     // ========================================
     console.log('\n✏️  7. Updating Photo like count...');
 
+    // NOTE: `update()` defaults to `ReturnValues: NONE`, so `.execute()`
+    // returns `undefined` unless you opt in with `.returning('ALL_NEW')`.
+    // Also note: `set()` overwrites the value non-atomically — for counters
+    // you almost always want `add()` (see step 17 for the atomic version).
     const updatedPhoto = await table.entities.Photo.update({
       username: 'johndoe',
       photoId: photo1.photoId,
     })
       .set('likesCount', 2)
+      .returning('ALL_NEW')
       .execute();
     console.log('✅ Updated photo:', updatedPhoto);
 
@@ -401,11 +418,12 @@ async function runExamples() {
       username: 'johndoe',
     })
       .add('followerCount', 2)
+      .returning('ALL_NEW')
       .execute();
     console.log('✅ Updated user follower count:', userWithMoreFollowers);
 
     // ========================================
-    // 14. PAGINATION - Photo pagination
+    // 14. PAGINATION - Photo pagination (real, with cursor)
     // ========================================
     console.log('\n📄 14. Testing Pagination...');
 
@@ -417,11 +435,27 @@ async function runExamples() {
       }).execute();
     }
 
+    // `execute()` only returns the first page and silently drops items past
+    // it. Use `executeWithPagination()` to receive `lastEvaluatedKey`, then
+    // chain `.startFrom(key)` to walk subsequent pages. Use `iterate()` if
+    // you just want every matching item lazily.
     const firstPage = await table.entities.Photo.query()
       .where((attr, op) => op.eq(attr.username, 'johndoe'))
       .limit(3)
-      .execute();
-    console.log(`✅ First page (limit 3): ${firstPage.length} items`);
+      .executeWithPagination();
+    console.log(`✅ First page (limit 3): ${firstPage.items.length} items`);
+
+    if (firstPage.lastEvaluatedKey) {
+      const secondPage = await table.entities.Photo.query()
+        .where((attr, op) => op.eq(attr.username, 'johndoe'))
+        .limit(3)
+        .startFrom(firstPage.lastEvaluatedKey)
+        .executeWithPagination();
+      console.log(
+        `✅ Second page (limit 3): ${secondPage.items.length} items` +
+          (secondPage.lastEvaluatedKey ? ' (more pages remain)' : ' (last page)')
+      );
+    }
 
     // ========================================
     // 15. CONDITIONAL PUT - Put solo si NO existe
@@ -515,6 +549,27 @@ async function runExamples() {
     }
 
     // ========================================
+    // 17b. GSI1 - List Likes chronologically (by likeId ULID)
+    // ========================================
+    // The primary index for Like is sorted by `likingUsername` (SK), so the
+    // primary query returns likes alphabetically by user. To list likes in
+    // chronological order (creation time), query the GSI1 whose sort key is
+    // `LIKE#${likeId}` — likeId is a ULID, which is time-ordered.
+    console.log('\n🕒 17b. Querying Likes chronologically via GSI1...');
+
+    const photoForGsi = photosForLike[0];
+    if (photoForGsi) {
+      const likesChronological = await table.entities.Like.query()
+        .where((attr, op) => op.eq(attr.photoId, photoForGsi.photoId))
+        .useIndex('GSI1')
+        .execute();
+      console.log(
+        `✅ Found ${likesChronological.length} likes (oldest → newest):`,
+        likesChronological.map((l) => l.likingUsername)
+      );
+    }
+
+    // ========================================
     // 18. QUERY with filters - Advanced search
     // ========================================
     console.log('\n🔍 18. Query with Filters...');
@@ -572,6 +627,7 @@ async function runExamples() {
       storyId: story1.storyId,
     })
       .add('viewCount', 1)
+      .returning('ALL_NEW')
       .execute();
 
     console.log('✅ Updated story viewCount:', updatedStory?.viewCount);
