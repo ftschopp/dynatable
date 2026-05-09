@@ -2,8 +2,10 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   DynamoDBDocumentClient,
+  DeleteCommand,
   GetCommand,
   PutCommand,
+  QueryCommand,
   UpdateCommand,
   TransactWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
@@ -277,5 +279,231 @@ describe('DynamoDBMigrationTracker - markAsApplied idempotency (#10)', () => {
     await tracker.acquireLock();
 
     await expect(tracker.markAsApplied('0.1.0', 'init')).resolves.toBeUndefined();
+  });
+});
+
+describe('DynamoDBMigrationTracker - releaseLock', () => {
+  test('issues a DeleteCommand on the lock row gated by the current lockId', async () => {
+    ddbMock.on(PutCommand).resolves({}); // acquireLock
+    ddbMock.on(DeleteCommand).resolves({});
+
+    const tracker = makeTracker();
+    await tracker.acquireLock();
+    await tracker.releaseLock();
+
+    const deletes = ddbMock.commandCalls(DeleteCommand);
+    expect(deletes).toHaveLength(1);
+    const input = deletes[0]!.args[0].input as any;
+    expect(input.Key).toEqual({
+      PK: '_SCHEMA#VERSION#LOCK',
+      SK: '_SCHEMA#VERSION#LOCK',
+    });
+    expect(input.ConditionExpression).toBe('lockId = :lockId');
+    expect(typeof input.ExpressionAttributeValues[':lockId']).toBe('string');
+  });
+
+  test('is a silent no-op when no lock has been acquired', async () => {
+    const tracker = makeTracker();
+    await expect(tracker.releaseLock()).resolves.toBeUndefined();
+    expect(ddbMock.commandCalls(DeleteCommand)).toHaveLength(0);
+  });
+
+  test('swallows ConditionalCheckFailedException (lock already taken by someone else)', async () => {
+    ddbMock.on(PutCommand).resolves({});
+    const err = Object.assign(new Error('cond failed'), {
+      name: 'ConditionalCheckFailedException',
+    });
+    ddbMock.on(DeleteCommand).rejects(err);
+
+    const tracker = makeTracker();
+    await tracker.acquireLock();
+
+    await expect(tracker.releaseLock()).resolves.toBeUndefined();
+  });
+
+  test('clears the local lockId so subsequent tracker writes are refused', async () => {
+    ddbMock.on(PutCommand).resolves({});
+    ddbMock.on(DeleteCommand).resolves({});
+
+    const tracker = makeTracker();
+    await tracker.acquireLock();
+    await tracker.releaseLock();
+
+    // After release, markAsApplied must refuse for the same reason as a
+    // never-acquired tracker (no active lock).
+    await expect(tracker.markAsApplied('0.1.0', 'init')).rejects.toThrow(
+      /Tracker has no active lock/i
+    );
+  });
+
+  test('re-throws non-conditional errors from the SDK', async () => {
+    ddbMock.on(PutCommand).resolves({});
+    const boom = Object.assign(new Error('upstream blew up'), { name: 'InternalServerError' });
+    ddbMock.on(DeleteCommand).rejects(boom);
+
+    const tracker = makeTracker();
+    await tracker.acquireLock();
+
+    await expect(tracker.releaseLock()).rejects.toBe(boom);
+  });
+});
+
+describe('DynamoDBMigrationTracker - markAsRolledBack', () => {
+  test('updates the migration row to status=rolled_back and points the current pointer at the previous applied version', async () => {
+    ddbMock.on(PutCommand).resolves({}); // acquireLock
+    ddbMock.on(TransactWriteCommand).resolves({});
+
+    // Three applied migrations; rolling back the latest should set the
+    // pointer to the second-to-last (0.2.0).
+    ddbMock.on(QueryCommand).resolves({
+      Items: [
+        { PK: '_SCHEMA#VERSION', SK: '0.1.0', version: '0.1.0', status: 'applied' },
+        { PK: '_SCHEMA#VERSION', SK: '0.2.0', version: '0.2.0', status: 'applied' },
+        { PK: '_SCHEMA#VERSION', SK: '0.3.0', version: '0.3.0', status: 'applied' },
+      ],
+    });
+
+    const tracker = makeTracker();
+    await tracker.acquireLock();
+    await tracker.markAsRolledBack('0.3.0');
+
+    const tx = ddbMock.commandCalls(TransactWriteCommand);
+    expect(tx).toHaveLength(1);
+    const items = (tx[0]!.args[0].input as any).TransactItems as any[];
+
+    // [0] lock-ownership ConditionCheck
+    expect(items[0].ConditionCheck.ConditionExpression).toBe('lockId = :lockId');
+    // [1] update migration row → status: rolled_back
+    expect(items[1].Update.ExpressionAttributeValues[':status']).toBe('rolled_back');
+    expect(items[1].Update.Key).toEqual({ PK: '_SCHEMA#VERSION', SK: '0.3.0' });
+    // [2] move CURRENT pointer to previous applied version
+    expect(items[2].Update.ExpressionAttributeValues[':version']).toBe('0.2.0');
+    expect(items[2].Update.ExpressionAttributeValues[':gsi1sk']).toBe('0.2.0');
+  });
+
+  test('chooses the previous version using semver order across digit boundaries (0.10.0 → 0.9.0)', async () => {
+    // Critical against the lexicographic-sort regression: "0.9.0" > "0.10.0"
+    // lexicographically, but semver-wise 0.10.0 is the latest. Rolling back
+    // 0.10.0 must point CURRENT at 0.9.0, not 0.1.0 or '0.2.0' or whatever
+    // a string sort would pick.
+    ddbMock.on(PutCommand).resolves({});
+    ddbMock.on(TransactWriteCommand).resolves({});
+    ddbMock.on(QueryCommand).resolves({
+      Items: [
+        { PK: '_SCHEMA#VERSION', SK: '0.1.0', version: '0.1.0', status: 'applied' },
+        { PK: '_SCHEMA#VERSION', SK: '0.9.0', version: '0.9.0', status: 'applied' },
+        { PK: '_SCHEMA#VERSION', SK: '0.10.0', version: '0.10.0', status: 'applied' },
+      ],
+    });
+
+    const tracker = makeTracker();
+    await tracker.acquireLock();
+    await tracker.markAsRolledBack('0.10.0');
+
+    const tx = ddbMock.commandCalls(TransactWriteCommand);
+    const items = (tx[0]!.args[0].input as any).TransactItems as any[];
+    const pointerUpdate = items[2].Update;
+    expect(pointerUpdate.ExpressionAttributeValues[':version']).toBe('0.9.0');
+  });
+
+  test('falls back to v0000 when rolling back the only applied migration', async () => {
+    ddbMock.on(PutCommand).resolves({});
+    ddbMock.on(TransactWriteCommand).resolves({});
+    ddbMock.on(QueryCommand).resolves({
+      Items: [{ PK: '_SCHEMA#VERSION', SK: '0.1.0', version: '0.1.0', status: 'applied' }],
+    });
+
+    const tracker = makeTracker();
+    await tracker.acquireLock();
+    await tracker.markAsRolledBack('0.1.0');
+
+    const tx = ddbMock.commandCalls(TransactWriteCommand);
+    const items = (tx[0]!.args[0].input as any).TransactItems as any[];
+    expect(items[2].Update.ExpressionAttributeValues[':version']).toBe('v0000');
+  });
+
+  test('ignores rolled_back / failed records when picking the previous version', async () => {
+    ddbMock.on(PutCommand).resolves({});
+    ddbMock.on(TransactWriteCommand).resolves({});
+    ddbMock.on(QueryCommand).resolves({
+      Items: [
+        { PK: '_SCHEMA#VERSION', SK: '0.1.0', version: '0.1.0', status: 'applied' },
+        { PK: '_SCHEMA#VERSION', SK: '0.2.0', version: '0.2.0', status: 'rolled_back' },
+        { PK: '_SCHEMA#VERSION', SK: '0.3.0', version: '0.3.0', status: 'failed' },
+        { PK: '_SCHEMA#VERSION', SK: '0.4.0', version: '0.4.0', status: 'applied' },
+      ],
+    });
+
+    const tracker = makeTracker();
+    await tracker.acquireLock();
+    await tracker.markAsRolledBack('0.4.0');
+
+    const tx = ddbMock.commandCalls(TransactWriteCommand);
+    const items = (tx[0]!.args[0].input as any).TransactItems as any[];
+    expect(items[2].Update.ExpressionAttributeValues[':version']).toBe('0.1.0');
+  });
+
+  test('refuses to issue any write if no lock is held', async () => {
+    const tracker = makeTracker();
+    await expect(tracker.markAsRolledBack('0.1.0')).rejects.toThrow(/Tracker has no active lock/i);
+    expect(ddbMock.commandCalls(TransactWriteCommand)).toHaveLength(0);
+  });
+});
+
+describe('DynamoDBMigrationTracker - markAsApplied happy path', () => {
+  test('writes a Put with version, name, status=applied, checksum, and bumps CURRENT pointer atomically', async () => {
+    ddbMock.on(PutCommand).resolves({}); // acquireLock
+    ddbMock.on(GetCommand).resolves({ Item: undefined }); // no existing record → Put branch
+    ddbMock.on(TransactWriteCommand).resolves({});
+
+    const tracker = makeTracker();
+    await tracker.acquireLock();
+    await tracker.markAsApplied('0.1.0', 'init', { foo: 1 }, undefined, 'abc123');
+
+    const tx = ddbMock.commandCalls(TransactWriteCommand);
+    expect(tx).toHaveLength(1);
+    const items = (tx[0]!.args[0].input as any).TransactItems as any[];
+
+    // [0] ConditionCheck on the lock row
+    expect(items[0].ConditionCheck).toBeDefined();
+    // [1] Put the migration row
+    expect(items[1].Put).toBeDefined();
+    expect(items[1].Put.Item).toMatchObject({
+      PK: '_SCHEMA#VERSION',
+      SK: '0.1.0',
+      version: '0.1.0',
+      name: 'init',
+      status: 'applied',
+      schemaDefinition: { foo: 1 },
+      checksum: 'abc123',
+    });
+    expect(items[1].Put.ConditionExpression).toBe('attribute_not_exists(SK)');
+    // [2] Update CURRENT pointer to this version
+    expect(items[2].Update.Key).toEqual({
+      PK: '_SCHEMA#VERSION#CURRENT',
+      SK: '_SCHEMA#VERSION#CURRENT',
+    });
+    expect(items[2].Update.ExpressionAttributeValues[':version']).toBe('0.1.0');
+  });
+
+  test('takes the Update branch when the migration row already exists in a non-applied state (e.g. rolled_back)', async () => {
+    ddbMock.on(PutCommand).resolves({});
+    ddbMock.on(GetCommand).resolves({
+      Item: { PK: '_SCHEMA#VERSION', SK: '0.1.0', version: '0.1.0', status: 'rolled_back' },
+    });
+    ddbMock.on(TransactWriteCommand).resolves({});
+
+    const tracker = makeTracker();
+    await tracker.acquireLock();
+    await tracker.markAsApplied('0.1.0', 'init');
+
+    const tx = ddbMock.commandCalls(TransactWriteCommand);
+    const items = (tx[0]!.args[0].input as any).TransactItems as any[];
+    // Should be Update, not Put
+    expect(items[1].Update).toBeDefined();
+    expect(items[1].Put).toBeUndefined();
+    // Refuses to re-apply something already in status=applied
+    expect(items[1].Update.ConditionExpression).toBe('#status <> :status');
+    expect(items[1].Update.ExpressionAttributeValues[':status']).toBe('applied');
   });
 });
