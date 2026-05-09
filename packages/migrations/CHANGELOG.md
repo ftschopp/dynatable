@@ -1,3 +1,10 @@
+# @ftschopp/dynatable-migrations [1.3.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.2.6...@ftschopp/dynatable-migrations@1.3.0) (2026-05-09)
+
+
+### Features
+
+* **migrations:** down --yes confirmation, unlock cmd, config validation, init race fix, loader error categorization ([#37](https://github.com/ftschopp/dynatable/issues/37)) ([a2f65c6](https://github.com/ftschopp/dynatable/commit/a2f65c6891e0b9642117a491d61e63a3b88428d7)), closes [#17](https://github.com/ftschopp/dynatable/issues/17)
+
 ## @ftschopp/dynatable-migrations [1.2.6](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.2.5...@ftschopp/dynatable-migrations@1.2.6) (2026-05-09)
 
 
