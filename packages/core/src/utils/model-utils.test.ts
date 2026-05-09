@@ -332,7 +332,7 @@ describe('stripInternalKeys', () => {
     });
   });
 
-  test('should handle nested objects (does not recurse)', () => {
+  test('strips internal keys from nested plain objects too', () => {
     const input = {
       PK: 'USER#alice',
       SK: 'USER#alice',
@@ -348,16 +348,40 @@ describe('stripInternalKeys', () => {
 
     const result = stripInternalKeys(input);
 
-    // stripInternalKeys does not recurse into nested objects
     expect(result).toEqual({
       username: 'alice',
-      metadata: {
-        PK: 'METADATA#1',
-        SK: 'METADATA#1',
-        _type: 'Metadata',
-        value: 'test',
-      },
+      metadata: { value: 'test' },
     });
+  });
+
+  test('strips internal keys from objects nested inside arrays', () => {
+    const input = {
+      PK: 'USER#alice',
+      _type: 'User',
+      friends: [
+        { PK: 'USER#bob', _type: 'User', username: 'bob' },
+        { PK: 'USER#carol', _type: 'User', username: 'carol' },
+      ],
+    };
+
+    const result = stripInternalKeys(input);
+
+    expect(result).toEqual({
+      friends: [{ username: 'bob' }, { username: 'carol' }],
+    });
+  });
+
+  test('preserves Date instances instead of recursing into them', () => {
+    const date = new Date('2025-01-01T00:00:00Z');
+    const input = {
+      PK: 'USER#alice',
+      _type: 'User',
+      createdAt: date,
+    };
+
+    const result = stripInternalKeys(input) as { createdAt: Date };
+    expect(result.createdAt).toBeInstanceOf(Date);
+    expect(result.createdAt.getTime()).toBe(date.getTime());
   });
 });
 

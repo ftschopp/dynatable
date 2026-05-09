@@ -161,9 +161,15 @@ export const applyPostDefaults = <M extends ModelDefinition>(
 const INTERNAL_KEYS = ['PK', 'SK', '_type'] as const;
 
 /**
- * Removes internal DynamoDB keys from an item or array of items
- * @param data - Single item or array of items from DynamoDB
- * @returns Data with internal keys removed
+ * Removes internal DynamoDB keys from an item or array of items.
+ *
+ * Recurses into nested plain objects and arrays so an `_type` / `PK` / `SK`
+ * field embedded inside an attribute value (e.g. a denormalized snapshot
+ * of another entity) is also stripped. Class instances such as `Date` are
+ * passed through untouched — recursing into them would lose their type.
+ *
+ * @param data - Single item, array of items, or any nested value from DynamoDB
+ * @returns Data with internal keys removed at every level
  */
 export const stripInternalKeys = <T>(data: T | T[] | undefined): T | T[] | undefined => {
   if (data === undefined || data === null) {
@@ -174,12 +180,13 @@ export const stripInternalKeys = <T>(data: T | T[] | undefined): T | T[] | undef
     return data.map((item) => stripInternalKeys(item)) as T[];
   }
 
-  if (typeof data === 'object') {
+  // Only recurse into plain objects; preserve Date, Buffer, Set, Map,
+  // and anything else with a non-Object prototype.
+  if (typeof data === 'object' && Object.getPrototypeOf(data) === Object.prototype) {
     const cleaned: any = {};
     for (const [key, value] of Object.entries(data)) {
-      if (!INTERNAL_KEYS.includes(key as any)) {
-        cleaned[key] = value;
-      }
+      if (INTERNAL_KEYS.includes(key as any)) continue;
+      cleaned[key] = stripInternalKeys(value);
     }
     return cleaned as T;
   }

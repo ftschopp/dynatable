@@ -7,6 +7,16 @@ import { DynamoDBLogger } from '../../utils/dynamodb-logger';
 import { computeIndexUpdates } from '../../utils/model-utils';
 
 /**
+ * Pull the LHS attribute name out of a SET-action expression like
+ * `#GSI1PK = :v_0` → `'GSI1PK'`. Returns `undefined` for shapes the
+ * builder doesn't emit so callers can ignore them safely.
+ */
+function extractAttrName(action: UpdateAction): string | undefined {
+  const m = action.expression.match(/^\s*#([A-Za-z0-9_]+)\s*=/);
+  return m?.[1];
+}
+
+/**
  * Creates an UpdateBuilder for an item key and table.
  *
  * When `indexContext` is provided, fields written via `.set()` that participate
@@ -246,6 +256,24 @@ export function createUpdateBuilder<Model>(
             `Update touches fields that participate in secondary index templates, ` +
               `but the templates cannot be fully resolved from the update payload. ` +
               `Include the missing fields in .set():\n${details}`
+          );
+        }
+        // If the user's `.set()` already targets the same index-key
+        // attribute (e.g. `.set('GSI1PK', 'foo')`), refuse to silently
+        // emit a second SET against the same path. DynamoDB rejects
+        // `SET #GSI1PK = :a, #GSI1PK = :b` outright, and namespacing the
+        // placeholders only hides which one wins. Force the caller to
+        // resolve the conflict explicitly.
+        const userSetKeys = new Set(actionsToProcess.set.map(extractAttrName));
+        userSetKeys.delete(undefined);
+        const conflicts = Object.keys(idxActions).filter((k) => userSetKeys.has(k));
+        if (conflicts.length > 0) {
+          throw new Error(
+            `Update would write the same secondary-index key twice: ` +
+              `[${conflicts.join(', ')}] is recomputed from the index template AND ` +
+              `set explicitly via .set(). Either remove the explicit .set() and let ` +
+              `the recomputation handle it, or include all template variables in ` +
+              `.set() so you take full control.`
           );
         }
         for (const [indexName, resolved] of Object.entries(idxActions)) {
