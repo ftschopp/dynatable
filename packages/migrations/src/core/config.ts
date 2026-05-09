@@ -76,8 +76,27 @@ export class ConfigLoader {
       throw new Error("Configuration error: 'tableName' is required");
     }
 
+    // DynamoDB table-name rules: 3-255 chars, alphanumeric plus . _ -.
+    // Cheapest place to catch typos before the SDK rejects the request.
+    if (!/^[a-zA-Z0-9._-]{3,255}$/.test(config.tableName)) {
+      throw new Error(
+        `Configuration error: 'tableName' must be 3-255 characters and contain only ` +
+          `letters, numbers, '.', '_', or '-' (got: ${JSON.stringify(config.tableName)})`
+      );
+    }
+
     if (!config.client?.region) {
       throw new Error("Configuration error: 'client.region' is required");
+    }
+
+    const migrationsDir = config.migrationsDir || './migrations';
+    // We don't auto-create the directory here — `dynatable-migrate init`
+    // and `create` both handle that. But if the user explicitly pointed
+    // at something that exists and isn't a directory, fail loudly.
+    if (fs.existsSync(migrationsDir) && !fs.statSync(migrationsDir).isDirectory()) {
+      throw new Error(
+        `Configuration error: 'migrationsDir' (${migrationsDir}) exists but is not a directory.`
+      );
     }
 
     return {
@@ -87,7 +106,7 @@ export class ConfigLoader {
         endpoint: config.client.endpoint,
         credentials: config.client.credentials,
       },
-      migrationsDir: config.migrationsDir || './migrations',
+      migrationsDir,
       trackingPrefix: config.trackingPrefix || '_SCHEMA#VERSION',
       gsi1Name: config.gsi1Name || 'GSI1',
     };

@@ -67,20 +67,29 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
     // Check if current version pointer exists, if not create it
     const current = await this.getCurrentVersion();
     if (!current) {
-      // Create initial version pointer
-      await this.client.send(
-        new PutCommand({
-          TableName: this.tableName,
-          Item: {
-            PK: `${this.trackingPrefix}#CURRENT`,
-            SK: `${this.trackingPrefix}#CURRENT`,
-            GSI1PK: 'SCHEMA#CURRENT',
-            GSI1SK: 'v0000',
-            currentVersion: 'v0000',
-            updatedAt: new Date().toISOString(),
-          },
-        })
-      );
+      // Create initial version pointer. The condition prevents two
+      // concurrent first-run inits from each writing the row — without
+      // it, both reads return null, both Puts succeed, and the second
+      // silently overwrites the first.
+      try {
+        await this.client.send(
+          new PutCommand({
+            TableName: this.tableName,
+            Item: {
+              PK: `${this.trackingPrefix}#CURRENT`,
+              SK: `${this.trackingPrefix}#CURRENT`,
+              GSI1PK: 'SCHEMA#CURRENT',
+              GSI1SK: 'v0000',
+              currentVersion: 'v0000',
+              updatedAt: new Date().toISOString(),
+            },
+            ConditionExpression: 'attribute_not_exists(PK)',
+          })
+        );
+      } catch (err: any) {
+        // Another worker initialized first — that's the desired post-state.
+        if (err?.name !== 'ConditionalCheckFailedException') throw err;
+      }
     }
   }
 

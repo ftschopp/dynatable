@@ -282,6 +282,56 @@ describe('DynamoDBMigrationTracker - markAsApplied idempotency (#10)', () => {
   });
 });
 
+describe('DynamoDBMigrationTracker - initialize', () => {
+  test('writes the CURRENT pointer with attribute_not_exists(PK) so concurrent first-runs do not double-write', async () => {
+    ddbMock.on(GetCommand).resolves({ Item: undefined });
+    ddbMock.on(PutCommand).resolves({});
+
+    const tracker = makeTracker();
+    await tracker.initialize();
+
+    const calls = ddbMock.commandCalls(PutCommand);
+    expect(calls).toHaveLength(1);
+    const input = calls[0]!.args[0].input as any;
+    expect(input.Item.PK).toBe('_SCHEMA#VERSION#CURRENT');
+    expect(input.Item.currentVersion).toBe('v0000');
+    expect(input.ConditionExpression).toBe('attribute_not_exists(PK)');
+  });
+
+  test('swallows ConditionalCheckFailedException when another worker initialized first', async () => {
+    ddbMock.on(GetCommand).resolves({ Item: undefined });
+    ddbMock.on(PutCommand).rejects(
+      Object.assign(new Error('cond failed'), { name: 'ConditionalCheckFailedException' })
+    );
+
+    const tracker = makeTracker();
+    await expect(tracker.initialize()).resolves.toBeUndefined();
+  });
+
+  test('does not Put when the CURRENT pointer already exists', async () => {
+    ddbMock.on(GetCommand).resolves({
+      Item: {
+        PK: '_SCHEMA#VERSION#CURRENT',
+        SK: '_SCHEMA#VERSION#CURRENT',
+        currentVersion: '0.1.0',
+      },
+    });
+
+    const tracker = makeTracker();
+    await tracker.initialize();
+    expect(ddbMock.commandCalls(PutCommand)).toHaveLength(0);
+  });
+
+  test('re-throws unexpected errors from the SDK', async () => {
+    ddbMock.on(GetCommand).resolves({ Item: undefined });
+    const boom = Object.assign(new Error('upstream blew up'), { name: 'InternalServerError' });
+    ddbMock.on(PutCommand).rejects(boom);
+
+    const tracker = makeTracker();
+    await expect(tracker.initialize()).rejects.toBe(boom);
+  });
+});
+
 describe('DynamoDBMigrationTracker - releaseLock', () => {
   test('issues a DeleteCommand on the lock row gated by the current lockId', async () => {
     ddbMock.on(PutCommand).resolves({}); // acquireLock

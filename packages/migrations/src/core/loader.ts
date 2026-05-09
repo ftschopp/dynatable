@@ -5,6 +5,27 @@ import { Migration, MigrationFile } from '../types';
 import { compareSemver } from './semver';
 
 /**
+ * Map a require/import failure to a human-readable category. The same
+ * thrown error covers wildly different operator-facing problems —
+ * "your file has a syntax error", "you forgot to install a dep", "the
+ * code ran on import and threw" — and prefixing the message with the
+ * category cuts triage time significantly.
+ */
+function categorizeLoadError(error: unknown): string {
+  const e = error as { code?: string; name?: string; message?: string } | null;
+  const code = e?.code;
+  const name = e?.name;
+  const msg = e?.message ?? '';
+  if (code === 'MODULE_NOT_FOUND' || code === 'ERR_MODULE_NOT_FOUND') {
+    return 'Missing dependency';
+  }
+  if (name === 'SyntaxError' || /SyntaxError|TS\d{4}|ts-node/i.test(msg)) {
+    return 'Syntax error';
+  }
+  return 'Runtime error';
+}
+
+/**
  * Load all migration files from directory
  */
 export class MigrationLoader {
@@ -82,8 +103,7 @@ export class MigrationLoader {
         module = require(absolutePath);
       } catch (error: any) {
         throw new Error(
-          `Failed to load TypeScript migration ${filePath}: ${error.message}. ` +
-            `Ensure ts-node is installed and the file has valid TypeScript syntax.`
+          `${categorizeLoadError(error)} loading TypeScript migration ${filePath}: ${error.message}`
         );
       }
     } else {
@@ -92,7 +112,9 @@ export class MigrationLoader {
         const fileUrl = `file://${absolutePath}`;
         module = await import(fileUrl);
       } catch (error: any) {
-        throw new Error(`Failed to load JavaScript migration ${filePath}: ${error.message}`);
+        throw new Error(
+          `${categorizeLoadError(error)} loading JavaScript migration ${filePath}: ${error.message}`
+        );
       }
     }
 
