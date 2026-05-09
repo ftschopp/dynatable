@@ -490,6 +490,145 @@ describe('QueryBuilder - GSI key recognition', () => {
   });
 });
 
+describe('QueryBuilder - non-conventional index key names', () => {
+  const client = new DynamoDBClient({});
+  const tableName = 'TestTable';
+
+  interface UserModel {
+    id: string;
+    spotifyId: string;
+    name?: string;
+  }
+
+  // Non-conventional names: index is "BySpotifyId" but its keys are
+  // `lookupPK` / `lookupSK` (not `BySpotifyIdPK` / `BySpotifyIdSK`).
+  // Resolution must rely on the explicit `indexName` field.
+  const modelWithCustomIndexNames: ModelDefinition = {
+    key: {
+      PK: { type: String, value: 'USER#${id}' },
+      SK: { type: String, value: 'USER#${id}' },
+    },
+    index: {
+      lookupPK: { type: String, value: 'SPOTIFY#${spotifyId}', indexName: 'BySpotifyId' },
+      lookupSK: { type: String, value: 'SPOTIFY#${spotifyId}', indexName: 'BySpotifyId' },
+    },
+    attributes: {
+      id: { type: String, required: true },
+      spotifyId: { type: String, required: true },
+      name: { type: String },
+    },
+  };
+
+  test('resolves the index key by explicit `indexName`, not by prefix-matching the key name', () => {
+    const params = createQueryBuilder<UserModel>(tableName, client, modelWithCustomIndexNames)
+      .where((attr, op) => op.eq(attr.spotifyId, '6rqhFgbbKwnb9MLmUQDhG6'))
+      .useIndex('BySpotifyId')
+      .dbParams();
+
+    expect(params.IndexName).toBe('BySpotifyId');
+    expect(params.KeyConditionExpression).toBeDefined();
+    expect(params.KeyConditionExpression).toContain('#lookupPK');
+    expect(params.FilterExpression).toBeUndefined();
+    expect(Object.values(params.ExpressionAttributeValues!)).toContain(
+      'SPOTIFY#6rqhFgbbKwnb9MLmUQDhG6'
+    );
+  });
+
+  test('error message lists the index template variables when the where clause misses them', () => {
+    const builder = createQueryBuilder<UserModel & { name: string }>(
+      tableName,
+      client,
+      modelWithCustomIndexNames
+    )
+      .where((attr, op) => op.eq(attr.name, 'alice'))
+      .useIndex('BySpotifyId');
+
+    expect(() => builder.dbParams()).toThrow(/spotifyId/);
+  });
+});
+
+describe('QueryBuilder - prefix-colliding index names (GSI1 vs GSI10)', () => {
+  const client = new DynamoDBClient({});
+  const tableName = 'TestTable';
+
+  interface UserModel {
+    id: string;
+    email: string;
+    handle: string;
+  }
+
+  // Two indexes whose names share a prefix: `GSI1` and `GSI10`. With the old
+  // `keyName.startsWith(indexName)` logic, querying GSI1 would also match
+  // GSI10's keys. The fix uses an exact `<indexName>PK`/`<indexName>SK`
+  // suffix check instead.
+  const modelWithCollidingIndexes: ModelDefinition = {
+    key: {
+      PK: { type: String, value: 'USER#${id}' },
+      SK: { type: String, value: 'USER#${id}' },
+    },
+    index: {
+      GSI1PK: { type: String, value: 'EMAIL#${email}' },
+      GSI1SK: { type: String, value: 'EMAIL#${email}' },
+      GSI10PK: { type: String, value: 'HANDLE#${handle}' },
+      GSI10SK: { type: String, value: 'HANDLE#${handle}' },
+    },
+    attributes: {
+      id: { type: String, required: true },
+      email: { type: String, required: true },
+      handle: { type: String, required: true },
+    },
+  };
+
+  test('querying GSI1 only resolves GSI1 keys (not GSI10)', () => {
+    const params = createQueryBuilder<UserModel>(tableName, client, modelWithCollidingIndexes)
+      .where((attr, op) => op.eq(attr.email, 'alice@example.com'))
+      .useIndex('GSI1')
+      .dbParams();
+
+    expect(params.IndexName).toBe('GSI1');
+    expect(params.KeyConditionExpression).toContain('#GSI1PK');
+    expect(params.KeyConditionExpression).not.toContain('#GSI10PK');
+    expect(Object.values(params.ExpressionAttributeValues!)).toContain('EMAIL#alice@example.com');
+  });
+
+  test('querying GSI1 with a GSI10-only attribute treats it as a non-key filter', () => {
+    const params = createQueryBuilder<UserModel>(tableName, client, modelWithCollidingIndexes)
+      .where((attr, op) => op.and(op.eq(attr.email, 'alice@example.com'), op.eq(attr.handle, 'a')))
+      .useIndex('GSI1')
+      .dbParams();
+
+    expect(params.KeyConditionExpression).toContain('#GSI1PK');
+    expect(params.FilterExpression).toContain('#handle');
+    expect(params.KeyConditionExpression).not.toContain('#GSI10');
+  });
+
+  test('querying GSI10 only resolves GSI10 keys (not GSI1)', () => {
+    const params = createQueryBuilder<UserModel>(tableName, client, modelWithCollidingIndexes)
+      .where((attr, op) => op.eq(attr.handle, 'alice'))
+      .useIndex('GSI10')
+      .dbParams();
+
+    expect(params.IndexName).toBe('GSI10');
+    expect(params.KeyConditionExpression).toContain('#GSI10PK');
+    expect(params.KeyConditionExpression).not.toContain('#GSI1PK ');
+    expect(Object.values(params.ExpressionAttributeValues!)).toContain('HANDLE#alice');
+  });
+
+  test('error hint for GSI1 mentions only its own template vars', () => {
+    const builder = createQueryBuilder<UserModel & { other: string }>(
+      tableName,
+      client,
+      modelWithCollidingIndexes
+    )
+      .where((attr, op) => op.eq(attr.other, 'x'))
+      .useIndex('GSI1');
+
+    expect(() => builder.dbParams()).toThrow(/email/);
+    // Should NOT mention `handle` (which only belongs to GSI10).
+    expect(() => builder.dbParams()).not.toThrow(/handle/);
+  });
+});
+
 describe('QueryBuilder - multi-variable key templates', () => {
   const client = new DynamoDBClient({});
   const tableName = 'TestTable';

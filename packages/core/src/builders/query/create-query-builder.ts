@@ -6,9 +6,31 @@ import { createOpBuilder } from '../shared/operators';
 import { buildExpression } from '../shared/conditions';
 import { buildProjectionExpression } from '../shared/projection';
 import { QueryBuilder, QueryExecutor, QueryResult } from './types';
-import { ModelDefinition } from '../../core/types';
+import { KeyDefinition, ModelDefinition } from '../../core/types';
 import { extractTemplateVars } from '../../utils/model-utils';
 import { DynamoDBLogger } from '../../utils/dynamodb-logger';
+
+/**
+ * Decide whether an entry in `model.index` belongs to the given index.
+ *
+ * 1. If the key declaration carries an explicit `indexName`, that wins —
+ *    consumers with non-conventional names (e.g. index `BySpotifyId` with
+ *    keys `lookupPK`/`lookupSK`) opt in by setting it.
+ * 2. Otherwise we fall back to the historical convention but with an EXACT
+ *    `<indexName>PK` / `<indexName>SK` suffix check (not `startsWith`), so
+ *    sibling indexes whose names share a prefix — `GSI1` vs `GSI10` — don't
+ *    cross-pollute key resolution.
+ */
+function keyBelongsToIndex(
+  keyName: string,
+  keyDef: KeyDefinition,
+  indexName: string
+): boolean {
+  if (keyDef.indexName !== undefined) {
+    return keyDef.indexName === indexName;
+  }
+  return keyName === `${indexName}PK` || keyName === `${indexName}SK`;
+}
 
 /**
  * Internal state for the query builder
@@ -42,7 +64,7 @@ function getKeyNameForAttribute(
   // When an index is specified, check model.index first for key templates
   if (indexName && model.index) {
     for (const [keyName, keyDef] of Object.entries(model.index)) {
-      if (!keyName.startsWith(indexName)) {
+      if (!keyBelongsToIndex(keyName, keyDef, indexName)) {
         continue;
       }
       const templateVars = extractTemplateVars(keyDef.value);
@@ -272,7 +294,9 @@ function createQueryExecutor<Model>(state: QueryState<Model>): QueryExecutor<Mod
       if (keyConditions.length === 0) {
         const keyTemplates = state.indexName
           ? Object.entries(state.model?.index ?? {})
-              .filter(([keyName]) => keyName.startsWith(state.indexName!))
+              .filter(([keyName, def]) =>
+                keyBelongsToIndex(keyName, def, state.indexName!)
+              )
               .map(([, def]) => def.value)
           : Object.values(state.model?.key ?? {}).map((def) => def.value);
         const templateVars = Array.from(

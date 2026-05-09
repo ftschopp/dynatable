@@ -95,10 +95,15 @@ export type AttributeDefinition =
  *
  * @property type - Always String for DynamoDB keys
  * @property value - Template string for key generation
+ * @property indexName - Optional explicit association of this key to a secondary
+ *   index. Use this when index keys are not named with the conventional
+ *   `<indexName>PK` / `<indexName>SK` pattern, or to disambiguate indexes
+ *   whose names share a prefix (e.g. `GSI1` and `GSI10`).
  */
 export type KeyDefinition = {
   type: StringConstructor;
   value: string;
+  indexName?: string;
 };
 
 /**
