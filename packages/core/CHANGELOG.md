@@ -1,3 +1,10 @@
+# @ftschopp/dynatable-core [1.5.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.4.4...@ftschopp/dynatable-core@1.5.0) (2026-05-09)
+
+
+### Features
+
+* **core:** chunk and retry BatchGet/BatchWrite to handle DynamoDB limits ([#26](https://github.com/ftschopp/dynatable/issues/26)) ([5c7b1cc](https://github.com/ftschopp/dynatable/commit/5c7b1cc0044d0ae6a213735a40f20ef0232dbceb)), closes [#6](https://github.com/ftschopp/dynatable/issues/6)
+
 ## @ftschopp/dynatable-core [1.4.4](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.4.3...@ftschopp/dynatable-core@1.4.4) (2026-05-09)
 
 
