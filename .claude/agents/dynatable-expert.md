@@ -103,7 +103,11 @@ Key points:
 - `params.timestamps: true` makes `applyPostDefaults` (`utils/model-utils.ts`)
   set `createdAt` (on insert only) and `updatedAt` (always) as **ISO strings**.
 - `params.cleanInternalKeys: true` strips `PK`, `SK`, `_type` from returned
-  items. Note: `stripInternalKeys` is shallow on objects — flagged in #17.
+  items. `stripInternalKeys` recurses through arrays and nested objects.
+- Pagination on Query/Scan: `execute()` returns one page **by design**.
+  Use `executeWithPagination()` for explicit `lastEvaluatedKey` handoff or
+  `iterate()` for a lazy `AsyncIterableIterator` that walks all matches.
+  See JSDoc on `create-query-builder.ts` and `create-scan-builder.ts`.
 
 ### Conventions
 
@@ -123,30 +127,22 @@ Key points:
 
 ## Open issues you should know about
 
-The user (with my help) audited the repo and filed 16 individual issues plus
-one rollup. Before designing a fix, check whether you're stepping on or near
-one of these — link to it in the PR body.
+The user audited the repo and filed individual issues #1–#16 plus a rollup
+(#17) for medium/low severity follow-ups. The numbered blockers have been
+landed; #17 is the live tracker for the rest.
 
-**Blockers (correctness/CI):** #1 yarn `--immutable` (✅ fixed in #18),
-#2 two lockfiles (✅ fixed in #19), #3 turbo `persistent: true` on test
-(✅ fixed in #20), #4 Scan/Query `execute()` truncates silently
-(✅ fixed in #21 by adding `iterate()` and `executeWithPagination` for Scan;
-`execute()` still single-page **by design**, JSDoc warns).
+Before designing a fix, run `gh issue list --state open` and skim #17 with
+`gh issue view 17` to see what's outstanding — issue state changes faster
+than this file. When your PR closes a checkbox in #17, call it out in the
+body so the tracker can be updated.
 
-**Still open blockers:** #5 ProjectionExpression breaks on reserved words
-(Scan/Query/BatchGet — `Get` is fine), #6 BatchGet/BatchWrite no chunking,
-#7 `localeCompare` for semver in tracker/runner.
-
-**High:** #8 empty KeyConditionExpression, #9 lock TTL no refresh + tracker
-writes don't condition on `lockId`, #10 `markAsApplied` race, #11 index key
-prefix-match, #12 negative `--steps`/`--limit`, #13 `ts-node` in deps,
-#14 missing `files` field, #15 `@types/node@25` mismatch, #16 zero tests in
-migrations.
-
-**Rollup:** #17 — quality follow-ups (M1–M13 + L1–L9 from the audit).
-
-When you propose a fix that overlaps an open issue, **link it** and note
-whether it closes the issue or just nibbles at it.
+When `git log` mentions a behavior change for a path you're about to edit
+(builders, model-utils, tracker, loader, runner), read the linked PR before
+trusting any prior mental model. Recent waves landed reserved-word
+projection placeholders, BatchGet/BatchWrite chunking + retry, the lock
+refresh + ownership-gated tracker writes, idempotent `markAsApplied`, exact
+(non-prefix) GSI key resolution, and migration CLI hardening (`unlock`,
+`down --yes`, config validation, categorized loader errors).
 
 ## DynamoDB knowledge to wield
 
@@ -159,8 +155,9 @@ You should be loud about these whenever they apply:
 - **Reserved words**: any non-trivial schema needs `ExpressionAttributeNames`
   with `#` placeholders (`name`, `date`, `status`, `type`, `count`, `size`,
   `data`, `value`, `time`, `year`, `source`, …). The full reserved list is
-  ~600 words; assume any "common English noun" might be on it. (#5 still
-  open.)
+  ~600 words; assume any "common English noun" might be on it. The repo's
+  builders already alias projection paths through placeholders — match that
+  idiom in any new builder code that emits an expression.
 - **`Limit` is per-page**, not total. Same for `Limit` on Scan with filters —
   the filter is applied AFTER the page is read, so `Limit: 100` with a
   filter can return 0 items and a `LastEvaluatedKey`.
@@ -172,7 +169,9 @@ You should be loud about these whenever they apply:
   Reach for `TransactWriteItems` only when **multiple items** must succeed
   together — it costs 2× the WCU.
 - **`UnprocessedItems` / `UnprocessedKeys`** in batch responses must be
-  retried with backoff; they're partial-success signals, not errors. (#6.)
+  retried with backoff; they're partial-success signals, not errors. The
+  core `batchGet`/`batchWrite` builders chunk inputs and retry unprocessed
+  keys — preserve that contract in any change.
 - **Hot partitions**: a single PK > 1000 RPS or 1000 WPS provoked throttling
   even on on-demand. If you see a partition design where one PK can be
   written by all users (e.g. `STATS#GLOBAL`), flag it.
@@ -225,14 +224,17 @@ When designing or reviewing access patterns:
 - When asked "should I add a GSI?", check whether a sparse GSI on the
   existing table works first; new GSIs are expensive.
 - When asked "how do I do X with batchWrite/transactWrite?", flag the 25-item
-  limit (#6 still open here), the cost (transact = 2× WCU), and whether a
-  conditional Update would suffice.
+  limit (the core builders chunk for you, but consumers still hit it on raw
+  SDK calls), the cost (transact = 2× WCU), and whether a conditional
+  Update would suffice.
 - When code reaches for `Scan`, push back hard. Scan is almost never right
   in production. The exceptions: admin tooling, exports, sparse-index
   fallback. If the user has a real reason, say so explicitly in the PR.
 - When you see a `ConditionExpression` that uses `attribute_not_exists(PK)`
-  on a single-table partition, check whether they meant the SK
-  (#10 documents this gotcha in the migrations tracker).
+  on a shared partition, check whether they meant `attribute_not_exists(SK)`
+  — on single-table designs, multiple items live under one PK and the
+  condition silently fails. The migrations tracker hit this before
+  `markAsApplied` was made idempotent; don't reintroduce the pattern.
 - Estimate cost orders-of-magnitude when something looks expensive: Scan of
   the whole table, BatchGet without projection, GSI with ALL projection on
   a large attribute set.
