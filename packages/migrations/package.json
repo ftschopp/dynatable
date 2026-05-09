@@ -36,7 +36,18 @@
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.965.0",
     "@aws-sdk/lib-dynamodb": "^3.965.0",
-    "commander": "^14.0.2",
-    "ts-node": "^10.9.2"
+    "commander": "^14.0.2"
+  },
+  "peerDependencies": {
+    "ts-node": "^10.9.0",
+    "typescript": ">=4.5"
+  },
+  "peerDependenciesMeta": {
+    "ts-node": {
+      "optional": true
+    },
+    "typescript": {
+      "optional": true
+    }
   }
 }

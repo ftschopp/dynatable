@@ -21,6 +21,18 @@ npm install @ftschopp/dynatable-migrations
 yarn add @ftschopp/dynatable-migrations
 ```
 
+### TypeScript migrations (optional)
+
+If you write your migrations in TypeScript, also install `ts-node` and `typescript` as dev dependencies — they are declared as **optional peer dependencies** so projects with `.js` migrations don't pay the install cost.
+
+```bash
+npm install --save-dev ts-node typescript
+# or
+yarn add --dev ts-node typescript
+```
+
+If a `.ts` migration is loaded without `ts-node` available, the runner throws a clear error pointing at this section.
+
 ## Quick Start
 
 ### 1. Initialize

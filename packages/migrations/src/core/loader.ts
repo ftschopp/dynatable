@@ -122,7 +122,13 @@ export class MigrationLoader {
   }
 
   /**
-   * Register ts-node for TypeScript file loading
+   * Register ts-node for TypeScript file loading.
+   *
+   * `ts-node` and `typescript` are declared as optional peerDependencies of
+   * this package — consumers who only ever write `.js` migrations don't pay
+   * the install cost. The lazy `require` here keeps the module out of the
+   * runtime graph until a `.ts` migration is actually loaded, so JS-only
+   * users never hit this path.
    */
   private registerTsNode(): void {
     try {
@@ -145,8 +151,12 @@ export class MigrationLoader {
     } catch (error: any) {
       if (error.code === 'MODULE_NOT_FOUND') {
         throw new Error(
-          'ts-node is required to load TypeScript migrations. ' +
-            'Install it with: npm install ts-node'
+          'ts-node is required to load TypeScript migrations but is not installed. ' +
+            'Install it as a dev dependency:\n' +
+            '  npm install --save-dev ts-node typescript\n' +
+            '  # or\n' +
+            '  yarn add --dev ts-node typescript\n' +
+            'If your migrations are JavaScript only, rename them from .ts to .js.'
         );
       }
       // Other errors might mean ts-node is already registered differently
