@@ -7,6 +7,7 @@ import { runMigrations } from './commands/up';
 import { rollbackMigrations } from './commands/down';
 import { showStatus } from './commands/status';
 import { initProject } from './commands/init';
+import { parsePositiveInt } from './cli-utils';
 
 // Read version from package.json
 const packageJson = require('../package.json');
@@ -62,13 +63,12 @@ program
   .command('up')
   .description('Run pending migrations')
   .option('-c, --config <path>', 'Path to config file')
-  .option('-l, --limit <number>', 'Limit number of migrations to run')
+  .option('-l, --limit <number>', 'Limit number of migrations to run', parsePositiveInt('limit'))
   .option('-d, --dry-run', 'Show what would be done without making changes')
   .action(async (options) => {
     try {
       const config = await loadConfig(options.config);
-      const limit = options.limit ? parseInt(options.limit, 10) : undefined;
-      await runMigrations(config, limit, options.dryRun);
+      await runMigrations(config, options.limit, options.dryRun);
     } catch (error: any) {
       console.error(`Error: ${error.message}`);
       process.exit(1);
@@ -80,13 +80,12 @@ program
   .command('down')
   .description('Rollback migrations')
   .option('-c, --config <path>', 'Path to config file')
-  .option('-s, --steps <number>', 'Number of migrations to rollback', '1')
+  .option('-s, --steps <number>', 'Number of migrations to rollback', parsePositiveInt('steps'), 1)
   .option('-d, --dry-run', 'Show what would be done without making changes')
   .action(async (options) => {
     try {
       const config = await loadConfig(options.config);
-      const steps = parseInt(options.steps, 10);
-      await rollbackMigrations(config, steps, options.dryRun);
+      await rollbackMigrations(config, options.steps, options.dryRun);
     } catch (error: any) {
       console.error(`Error: ${error.message}`);
       process.exit(1);
