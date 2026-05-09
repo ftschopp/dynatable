@@ -334,6 +334,19 @@ export function createUpdateBuilder<Model>(
 
       const updateExpression = updateParts.join(' ');
 
+      // DynamoDB rejects an UpdateCommand without an UpdateExpression
+      // ("ValidationException: ExpressionAttributeNames must not be empty"
+      // or worse, "Member must not be null"). Throw a clearer error
+      // before the request leaves the process so the caller knows they
+      // forgot to call .set/.add/.remove/.delete.
+      if (!updateExpression) {
+        throw new Error(
+          'Update has no SET, REMOVE, ADD, or DELETE actions. Add at least one ' +
+            'before calling dbParams() / execute(). To check for existence without ' +
+            'modifying anything, use a get() instead.'
+        );
+      }
+
       // Build ConditionExpression from conditions
       let conditionExpression = '';
       let conditionNames = {};

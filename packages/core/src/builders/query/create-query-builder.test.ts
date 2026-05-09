@@ -907,3 +907,56 @@ describe('QueryBuilder - projection placeholders', () => {
     expect(params.FilterExpression).toMatch(/#status = :status_\d+/);
   });
 });
+
+describe('QueryBuilder - NOT() wrapping a condition', () => {
+  const client = new DynamoDBClient({});
+  const tableName = 'TestTable';
+
+  interface TestModel {
+    PK: string;
+    SK: string;
+    username: string;
+    status?: string;
+  }
+
+  const testModel: ModelDefinition = {
+    key: {
+      PK: { type: String, value: 'USER#${username}' },
+      SK: { type: String, value: 'USER#${username}' },
+    },
+    attributes: {
+      username: { type: String, required: true },
+      status: { type: String },
+    },
+  };
+
+  test('a NOT-wrapped key condition is moved to FilterExpression (KeyConditionExpression has no NOT)', () => {
+    // The user's intent: "username starts with `a` AND NOT status === 'inactive'".
+    // The NOT-wrapped status filter must keep its negation; without that,
+    // the query would return inactive rows too.
+    const params = createQueryBuilder<TestModel>(tableName, client, testModel)
+      .where((attr, op) =>
+        op.and(op.beginsWith(attr.username, 'a'), op.not(op.eq(attr.status, 'inactive')))
+      )
+      .dbParams();
+
+    expect(params.KeyConditionExpression).toContain('#PK');
+    expect(params.FilterExpression).toBeDefined();
+    expect(params.FilterExpression).toMatch(/NOT \(#status = :status_\d+\)/);
+  });
+
+  test('does not let NOT-wrapped key-field conditions sneak into KeyConditionExpression', () => {
+    // Negation on a key field must go to filter, not key — the negation
+    // would otherwise be silently dropped.
+    const params = createQueryBuilder<TestModel>(tableName, client, testModel)
+      .where((attr, op) =>
+        op.and(op.beginsWith(attr.username, 'a'), op.not(op.eq(attr.username, 'admin')))
+      )
+      .dbParams();
+
+    // The plain key condition stays in KeyConditionExpression.
+    expect(params.KeyConditionExpression).toContain('begins_with');
+    // The NOT-wrapped one moves to filter, with the negation intact.
+    expect(params.FilterExpression).toMatch(/NOT \(#username = :username_\d+\)/);
+  });
+});

@@ -362,7 +362,9 @@ describe('UpdateBuilder', () => {
       const builder2 = builder1.set('name', 'John');
       const builder3 = builder2.set('age', 30);
 
-      expect(builder1.dbParams().UpdateExpression).toBeUndefined();
+      // builder1 has no actions — calling dbParams() throws now (an
+      // empty UpdateExpression would be rejected by DynamoDB anyway).
+      expect(() => builder1.dbParams()).toThrow(/no SET, REMOVE, ADD, or DELETE/i);
       expect(builder2.dbParams().UpdateExpression).toBe('SET #name = :name_0');
       expect(builder3.dbParams().UpdateExpression).toBe('SET #name = :name_0, #age = :age_1');
     });
@@ -560,6 +562,60 @@ describe('UpdateBuilder', () => {
 
       expect(() => builder.dbParams()).toThrow(/GSI1PK/);
       expect(() => builder.dbParams()).toThrow(/twice/i);
+    });
+
+    test('throws when no SET/REMOVE/ADD/DELETE actions have been added', () => {
+      const builder = createUpdateBuilder<TestModel>(
+        tableName,
+        { pk: 'USER#1', sk: 'USER#1' } as Partial<TestModel>,
+        client
+      );
+
+      expect(() => builder.dbParams()).toThrow(/no SET, REMOVE, ADD, or DELETE/i);
+    });
+
+    test('throws when only a where() was set (no actions)', () => {
+      // A `.where()`-only chain produces a ConditionExpression but no
+      // UpdateExpression — DynamoDB rejects that. Catch it early.
+      const builder = createUpdateBuilder<TestModel>(
+        tableName,
+        { pk: 'USER#1', sk: 'USER#1' } as Partial<TestModel>,
+        client
+      ).where((attr, op) => op.eq(attr.name, 'alice'));
+
+      expect(() => builder.dbParams()).toThrow(/no SET, REMOVE, ADD, or DELETE/i);
+    });
+
+    test('same attribute appears in both .where() and .set() — known placeholder collision', () => {
+      // KNOWN BUG: the opBuilder created inside .where() has its own
+      // counter starting at 0, independent of the update builder's
+      // valueCounter. So `.where(op.eq(attr.status, 'pending'))` emits
+      // `:status_0` *and* the next `.set('status', 'active')` also
+      // emits `:status_0`, with the second value silently overwriting
+      // the first when the values map is merged.
+      //
+      // This test documents the current state so a fix can flip the
+      // assertions without rewriting the scenario. See follow-up issue.
+      const params = createUpdateBuilder<TestModel>(
+        tableName,
+        { pk: 'USER#1', sk: 'USER#1' } as Partial<TestModel>,
+        client
+      )
+        .where((attr, op) => op.eq(attr.status, 'pending'))
+        .set('status', 'active')
+        .dbParams();
+
+      expect(params.UpdateExpression).toMatch(/^SET #status = :status_\d+$/);
+      expect(params.ConditionExpression).toMatch(/#status = :status_\d+/);
+      expect(params.ExpressionAttributeNames!['#status']).toBe('status');
+
+      // Document collision: only one `:status_0` survives in the values
+      // map, with the SET value winning. After the bug is fixed this
+      // should be 2.
+      const valueKeys = Object.keys(params.ExpressionAttributeValues!).filter((k) =>
+        k.startsWith(':status_')
+      );
+      expect(valueKeys.length).toBeGreaterThanOrEqual(1);
     });
 
     test('does not throw when the user .set()s an unrelated index key that auto-recompute is NOT touching', () => {

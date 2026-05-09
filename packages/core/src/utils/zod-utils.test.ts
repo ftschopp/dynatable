@@ -37,7 +37,10 @@ describe('zod-utils', () => {
       expect(() => zodType.parse('true')).toThrow();
     });
 
-    it('should convert Date type to z.date()', () => {
+    it('coerces Date type to a Date — accepts both Date instances and ISO strings', () => {
+      // applyPostDefaults stores Date values as ISO strings, so the
+      // round-trip parse must accept the string we wrote without error
+      // and hand back a Date.
       const attr: AttributeDefinition = {
         type: Date,
         required: true,
@@ -45,8 +48,12 @@ describe('zod-utils', () => {
       const zodType = typeToZod(attr);
 
       const now = new Date();
-      expect(() => zodType.parse(now)).not.toThrow();
-      expect(() => zodType.parse('2024-01-01')).toThrow();
+      expect(zodType.parse(now)).toBeInstanceOf(Date);
+      const fromIso = zodType.parse('2026-05-09T12:00:00.000Z');
+      expect(fromIso).toBeInstanceOf(Date);
+      expect((fromIso as Date).toISOString()).toBe('2026-05-09T12:00:00.000Z');
+      // Non-date-like strings still get rejected.
+      expect(() => zodType.parse('not a date')).toThrow();
     });
 
     it('should make optional fields when required is false', () => {
@@ -358,6 +365,35 @@ describe('zod-utils', () => {
       expect(parsed.id).toBe('user-123');
       expect(parsed.count).toBe(42);
       expect(parsed.extra).toBe('allowed');
+    });
+
+    it('parses an ISO string back into a Date for a Date-typed attribute (DynamoDB read round-trip)', () => {
+      // Reproduces the read-side timestamp scenario: we wrote an ISO
+      // string to DynamoDB (as applyPostDefaults does for createdAt /
+      // updatedAt), and now we're parsing the row back through the
+      // model's zod schema. Without coercion this would throw.
+      const model: ModelDefinition = {
+        key: {
+          PK: { type: String, value: 'USER#${id}' },
+          SK: { type: String, value: 'PROFILE' },
+        },
+        attributes: {
+          id: { type: String, required: true },
+          createdAt: { type: Date, required: true },
+        },
+      };
+
+      const zodSchema = modelToZod(model);
+
+      const stored = {
+        id: 'user-1',
+        createdAt: '2026-05-09T12:00:00.000Z',
+      };
+
+      const parsed = zodSchema.parse(stored) as { id: string; createdAt: Date };
+      expect(parsed.id).toBe('user-1');
+      expect(parsed.createdAt).toBeInstanceOf(Date);
+      expect(parsed.createdAt.toISOString()).toBe('2026-05-09T12:00:00.000Z');
     });
   });
 });

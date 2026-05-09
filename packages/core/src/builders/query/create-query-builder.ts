@@ -145,7 +145,16 @@ function separateConditions(
       return;
     }
 
-    // It's a leaf condition - check if it's a key field
+    // It's a leaf condition - check if it's a key field. A negated leaf
+    // (`op.not(op.eq(attr.x, …))`) can never be a KeyConditionExpression
+    // — DynamoDB's KeyConditionExpression grammar has no NOT — and
+    // dropping the negation would silently change query semantics. Keep
+    // it as a filter so the negation is honored.
+    if (cond.isNegated) {
+      filterConditions.push(cond);
+      return;
+    }
+
     // Extract field name from the expression (e.g., "#username" -> "username")
     const fieldMatch = cond.expression.match(/#(\w+)/);
     if (fieldMatch && fieldMatch[1]) {

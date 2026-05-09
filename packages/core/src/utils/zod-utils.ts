@@ -33,8 +33,12 @@ export const typeToZod = (attr: AttributeDefinition): ZodType => {
           ? z.number()
           : attr.type === Boolean
             ? z.boolean()
-            : attr.type === Date
-              ? z.date()
+            : // applyPostDefaults stores Date values as ISO strings (e.g.
+              // createdAt/updatedAt). Use coerce so reading back a stored
+              // Date attribute through zod accepts both the ISO string we
+              // wrote and a native Date the caller might pass on input.
+              attr.type === Date
+              ? z.coerce.date()
               : z.unknown();
   }
 
