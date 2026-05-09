@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-core [1.4.4](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.4.3...@ftschopp/dynatable-core@1.4.4) (2026-05-09)
+
+
+### Bug Fixes
+
+* **core:** detect SET-collisions on auto-recomputed index keys; stripInternalKeys recurses ([#38](https://github.com/ftschopp/dynatable/issues/38)) ([d609c5b](https://github.com/ftschopp/dynatable/commit/d609c5bbeb566145ec034ec9883246a6d77d7cf6)), closes [#17](https://github.com/ftschopp/dynatable/issues/17) [#GSI1](https://github.com/ftschopp/dynatable/issues/GSI1) [#GSI1](https://github.com/ftschopp/dynatable/issues/GSI1)
+
 ## @ftschopp/dynatable-core [1.4.3](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.4.2...@ftschopp/dynatable-core@1.4.3) (2026-05-09)
 
 
