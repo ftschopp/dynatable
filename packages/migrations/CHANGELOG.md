@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-migrations [1.2.6](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.2.5...@ftschopp/dynatable-migrations@1.2.6) (2026-05-09)
+
+
+### Bug Fixes
+
+* **migrations:** reject non-positive --steps and --limit at the CLI boundary ([#30](https://github.com/ftschopp/dynatable/issues/30)) ([9e8484c](https://github.com/ftschopp/dynatable/commit/9e8484c039b486722e591d61af93631bd29ec238)), closes [#12](https://github.com/ftschopp/dynatable/issues/12)
+
 ## @ftschopp/dynatable-migrations [1.2.5](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.2.4...@ftschopp/dynatable-migrations@1.2.5) (2026-05-08)
 
 
