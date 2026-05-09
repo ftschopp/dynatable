@@ -7,6 +7,13 @@
   "bin": {
     "dynatable-migrate": "./bin/dynatable-migrate.js"
   },
+  "files": [
+    "dist",
+    "bin",
+    "README.md",
+    "USAGE.md",
+    "CHANGELOG.md"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -14,7 +21,8 @@
     "build": "tsc",
     "dev": "tsc --watch",
     "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
-    "test": "jest"
+    "test": "jest",
+    "prepublishOnly": "yarn build"
   },
   "keywords": [
     "dynamodb",
