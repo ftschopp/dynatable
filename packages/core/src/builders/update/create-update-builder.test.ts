@@ -539,6 +539,51 @@ describe('UpdateBuilder', () => {
 
       expect(params.UpdateExpression).toBe('SET #lastName = :lastName_0');
     });
+
+    test('throws when the user explicitly .set()s an index key that auto-recompute would also write', () => {
+      // Reproduces the silent-collision bug: user sets GSI1PK by hand
+      // while a touched template var would also recompute it.
+      const builder = createUpdateBuilder<PersonnelModel & { GSI1PK: string }>(
+        tableName,
+        { id: '1' } as Partial<PersonnelModel & { GSI1PK: string }>,
+        client,
+        [],
+        { set: [], remove: [], add: [], delete: [] },
+        'NONE',
+        0,
+        false,
+        undefined,
+        { model: personnelModel as any, keyVars: { id: '1' } }
+      )
+        .set('airportId' as any, 'EZE')
+        .set('GSI1PK' as any, 'CUSTOM#OVERRIDE');
+
+      expect(() => builder.dbParams()).toThrow(/GSI1PK/);
+      expect(() => builder.dbParams()).toThrow(/twice/i);
+    });
+
+    test('does not throw when the user .set()s an unrelated index key that auto-recompute is NOT touching', () => {
+      // GSI1PK only depends on airportId. User sets GSI1SK explicitly,
+      // and only updates `role` (not in any index template) — no
+      // recomputation, so no collision.
+      const params = createUpdateBuilder<PersonnelModel & { GSI1SK: string }>(
+        tableName,
+        { id: '1' } as Partial<PersonnelModel & { GSI1SK: string }>,
+        client,
+        [],
+        { set: [], remove: [], add: [], delete: [] },
+        'NONE',
+        0,
+        false,
+        undefined,
+        { model: personnelModel as any, keyVars: { id: '1' } }
+      )
+        .set('role', 'pilot')
+        .set('GSI1SK' as any, 'CUSTOM#SK')
+        .dbParams();
+
+      expect(params.UpdateExpression).toBe('SET #role = :role_0, #GSI1SK = :GSI1SK_1');
+    });
   });
 
   describe('Complex scenarios', () => {
