@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-core [1.4.3](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.4.2...@ftschopp/dynatable-core@1.4.3) (2026-05-09)
+
+
+### Bug Fixes
+
+* **query:** resolve index keys exactly, not by prefix match ([#34](https://github.com/ftschopp/dynatable/issues/34)) ([5ca8654](https://github.com/ftschopp/dynatable/commit/5ca865465454e84bee6b5e3e1510f5905a7027d9)), closes [#11](https://github.com/ftschopp/dynatable/issues/11)
+
 ## @ftschopp/dynatable-core [1.4.2](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.4.1...@ftschopp/dynatable-core@1.4.2) (2026-05-08)
 
 
