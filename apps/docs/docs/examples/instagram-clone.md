@@ -8,35 +8,55 @@ A complete example of an Instagram clone with users, photos, likes, comments, an
 
 ## Entity-Relationship Diagram (ER)
 
+> Logical model. Physical partition/sort keys (e.g. `USER#${username}`, `PHOTO#${photoId}`) live in the **Key Structure** table below.
+
 ```
-┌─────────────┐         ┌─────────────┐
-│    User     │         │    Photo    │
-├─────────────┤         ├─────────────┤
-│ username PK │◄───────┤│ username FK │
-│ name        │    1:N ││ photoId  PK │
-│ followerCnt │        ││ url         │
-│ followingCnt│        ││ likesCount  │
-└──────┬──────┘        ││ commentCount│
-       │    │          │└──────┬──────┘
-       │    │ 1:N      │       │ 1:N
-       │    │          │       │
-       │    ▼          │       ▼
-       │  ┌──────────┐ │  ┌─────────────┐
-       │  │  Story   │ │  │   Comment   │
-       │  ├──────────┤ │  ├─────────────┤
-       │  │username  │ │  │ photoId  FK │
-       │  │storyId PK│ │  │ commentId PK│
-       │  │frames [] │ │  │ username FK │
-       │  │location  │ │  │ content     │
-       │  └──────────┘ │  └─────────────┘
-       │               │
-       │ N:M           │  ┌─────────────┐
-       │ (Follow)      └─►│    Like     │
-       │                  ├─────────────┤
-       │                  │ photoId  FK │
-       │                  │ username FK │
-       └──────────────────┤ likeId   PK │
-                          └─────────────┘
+┌────────────────────┐
+│        User        │
+├────────────────────┤
+│ username        PK │
+│ name               │
+│ followerCount      │
+│ followingCount     │
+└──────────┬─────────┘
+           │
+           │ 1:N (a User has many Photos and Stories)
+           │
+   ┌───────┴────────┐
+   ▼                ▼
+┌────────────────────┐    ┌────────────────────┐
+│       Photo        │    │       Story        │
+├────────────────────┤    ├────────────────────┤
+│ username       FK  │    │ username       FK  │
+│ photoId        PK  │    │ storyId        PK  │
+│ url                │    │ frames []          │
+│ caption            │    │ location {}        │
+│ likesCount         │    │ viewCount          │
+│ commentCount       │    └────────────────────┘
+└─────────┬──────────┘
+          │
+          │ 1:N (a Photo has many Comments and Likes)
+          │
+   ┌──────┴───────┐
+   ▼              ▼
+┌────────────────────────┐  ┌──────────────────────────┐
+│        Comment         │  │           Like           │
+├────────────────────────┤  ├──────────────────────────┤
+│ photoId            FK  │  │ photoId              FK  │
+│ commentId          PK  │  │ likingUsername       PK  │
+│ commentingUsername FK  │  │ likeId   (GSI1 sort)     │
+│ content                │  └──────────────────────────┘
+└────────────────────────┘
+
+User ↔ User    N:M (via Follow)
+
+┌──────────────────────────────────────┐
+│                Follow                │
+├──────────────────────────────────────┤
+│ followedUsername                PK   │
+│ followingUsername               SK   │
+│ (GSI1 swaps PK/SK for inverse)       │
+└──────────────────────────────────────┘
 ```
 
 ## Single Table Design
@@ -73,8 +93,8 @@ The GSI in this example is named `gsi1`, with column names `GSI1PK` and `GSI1SK`
 4. **Likes**
    - Like a photo: `TransactWrite` - Put Like + Update Photo.likesCount
    - Unlike photo: `TransactWrite` - Delete Like + Update Photo.likesCount
-   - List likes (chronological): Query gsi1 with GSI1PK=`PL#{photoId}`
-   - Check if user liked: `GetItem` with PK=`PL#{photoId}`, SK=`LIKE#{username}`
+   - List likes (chronological): Query gsi1 with GSI1PK=`PL#{photoId}` (re-sorted by `likeId` ULID)
+   - Check if user liked: `GetItem` with PK=`PL#{photoId}`, SK=`LIKE#{likingUsername}`
 
 5. **Comments**
    - Comment on photo: `TransactWrite` - Put Comment + Update Photo.commentCount
@@ -84,8 +104,8 @@ The GSI in this example is named `gsi1`, with column names `GSI1PK` and `GSI1SK`
 6. **Follow**
    - Follow user: `TransactWrite` - Put Follow + Update followerCount + Update followingCount
    - Unfollow user: `TransactWrite` - Delete Follow + Update followerCount + Update followingCount
-   - List followers: `Query` with PK=`FOLLOW#{username}`, then `BatchGetItem` for user details
-   - List following: Query gsi1 with GSI1PK=`FOLLOW#{username}`, then `BatchGetItem` for details
+   - List followers: `Query` with PK=`FOLLOW#{followedUsername}`, then `BatchGetItem` for user details
+   - List following: Query gsi1 with GSI1PK=`FOLLOW#{followingUsername}`, then `BatchGetItem` for details
 
 ## Schema Definition
 
@@ -214,6 +234,7 @@ const InstagramSchema = {
 
   params: {
     timestamps: true,
+    cleanInternalKeys: true, // strip PK/SK/_type from returned items
   },
 } as const;
 
@@ -260,20 +281,22 @@ async function getUserProfile(username: string) {
 
 // Usage
 const user = await getUserProfile('juanca');
-console.log(user.name, user.followerCount);
+console.log(user?.name, user?.followerCount); // user is User | undefined
 ```
 
 ### Update User Profile
 
 ```typescript
 async function updateUserProfile(username: string, updates: { name?: string }) {
-  let query = table.entities.User.update({ username });
+  // DynamoDB rejects an UpdateItem with no UpdateExpression, so bail out
+  // when there's nothing to update.
+  if (!updates.name) return;
 
-  if (updates.name) {
-    query = query.set('name', updates.name);
-  }
-
-  return await query.returning('ALL_NEW').execute();
+  return await table.entities.User
+    .update({ username })
+    .set('name', updates.name)
+    .returning('ALL_NEW')
+    .execute();
 }
 
 // Usage
@@ -317,7 +340,7 @@ async function getPhoto(username: string, photoId: string) {
 
 // Usage
 const photo = await getPhoto('juanca', '01K16ZP43BRX67DG50SHGZ11DS');
-console.log(photo.url, photo.likesCount);
+console.log(photo?.url, photo?.likesCount); // photo is Photo | undefined
 ```
 
 ### List User Photos
@@ -339,6 +362,10 @@ photos.forEach((photo) => {
 ```
 
 ### List Popular User Photos
+
+:::caution
+`likesCount > minLikes` is **not** part of the key — DynamoDB applies it as a `FilterExpression` after reading every photo in the partition. RCUs are billed on the rows read, not the rows returned. For users with many photos you'll want to denormalize popular photos into a separate GSI or item collection.
+:::
 
 ```typescript
 async function getPopularUserPhotos(username: string, minLikes: number = 10) {
@@ -426,16 +453,14 @@ await unlikePhoto('photo123', 'juanca', 'alice');
 
 ```typescript
 async function hasUserLikedPhoto(photoId: string, username: string): Promise<boolean> {
-  try {
-    const like = await table.entities.Like.get({
-      photoId,
-      likingUsername: username,
-    }).execute();
+  // .get() returns undefined when the item doesn't exist (it does not throw),
+  // so a !!like check is enough — wrapping in try/catch would swallow real errors.
+  const like = await table.entities.Like.get({
+    photoId,
+    likingUsername: username,
+  }).execute();
 
-    return !!like;
-  } catch (error) {
-    return false;
-  }
+  return !!like;
 }
 
 // Usage
@@ -445,9 +470,11 @@ console.log(hasLiked ? 'Already liked' : 'Not liked yet');
 
 ### List Users Who Liked (Chronological)
 
+`Like` reuses its primary `PK` as `GSI1PK`, but swaps the `SK` from `likingUsername` to a generated `likeId` (ULID). That re-sort gives a chronological view of the likes — querying the primary index would order them alphabetically by `likingUsername` instead.
+
 ```typescript
-async function getPhotoLikes(photoId: string, limit: number = 50) {
-  // Use GSI1 to sort by likeId (timestamp)
+async function getPhotoLikers(photoId: string, limit: number = 50) {
+  // Use GSI1 to sort by likeId (ULID = timestamp)
   const likes = await table.entities.Like.query()
     .where((attr, op) => op.eq(attr.photoId, photoId))
     .useIndex('gsi1')
@@ -455,18 +482,15 @@ async function getPhotoLikes(photoId: string, limit: number = 50) {
     .scanIndexForward(true) // Oldest first
     .execute();
 
-  // Get user details
-  if (likes.length > 0) {
-    return await table.entities.User.batchGet(
-      likes.map((like) => ({ username: like.likingUsername }))
-    ).execute();
-  }
+  if (likes.length === 0) return [];
 
-  return [];
+  return await table.entities.User.batchGet(
+    likes.map((like) => ({ username: like.likingUsername }))
+  ).execute();
 }
 
 // Usage
-const likers = await getPhotoLikes('photo123', 20);
+const likers = await getPhotoLikers('photo123', 20);
 likers.forEach((user) => {
   console.log(user.username, user.name);
 });
@@ -565,6 +589,10 @@ async function deleteComment(photoId: string, commentId: string, photoOwner: str
 ```
 
 ### Update Comment
+
+:::note
+On `update()` builders, `.where(...)` builds a **`ConditionExpression`** — the update only happens if the condition is satisfied (here: only the original author can edit). On `query()` builders, `.where(...)` defines key conditions and filters. Same name, different role.
+:::
 
 ```typescript
 async function updateComment(
@@ -714,16 +742,13 @@ console.log(`Following ${following.length} users`);
 
 ```typescript
 async function isFollowing(followingUsername: string, followedUsername: string): Promise<boolean> {
-  try {
-    const follow = await table.entities.Follow.get({
-      followingUsername,
-      followedUsername,
-    }).execute();
+  // .get() returns undefined when the relation doesn't exist; no try/catch needed.
+  const follow = await table.entities.Follow.get({
+    followingUsername,
+    followedUsername,
+  }).execute();
 
-    return !!follow;
-  } catch (error) {
-    return false;
-  }
+  return !!follow;
 }
 
 // Usage
@@ -751,7 +776,7 @@ const story = await createStory('juanca', [
 ]);
 
 console.log(story.storyId); // Auto-generated ULID
-console.log(story.frames[0].url); // Fully typed
+console.log(story.frames[0]?.url); // Fully typed; frames[] could be empty
 ```
 
 ### List User Stories
@@ -817,25 +842,29 @@ feed.forEach((photo) => {
 
 ```typescript
 async function getPhotoWithDetails(username: string, photoId: string) {
-  const [photo, comments, likeCount] = await Promise.all([
+  const [photo, comments, likers] = await Promise.all([
     getPhoto(username, photoId),
     getPhotoComments(photoId, 20),
-    getPhotoLikes(photoId, 20),
+    getPhotoLikers(photoId, 20),
   ]);
+
+  if (!photo) return undefined;
 
   return {
     ...photo,
     comments: comments.slice(0, 3), // First 3 comments
     commentCount: photo.commentCount,
-    recentLikers: likeCount.slice(0, 5), // First 5 who liked
+    recentLikers: likers.slice(0, 5), // First 5 who liked
     totalLikes: photo.likesCount,
   };
 }
 
 // Usage
 const photoDetails = await getPhotoWithDetails('juanca', 'photo123');
-console.log(photoDetails.caption);
-console.log(`${photoDetails.totalLikes} likes, ${photoDetails.commentCount} comments`);
+if (photoDetails) {
+  console.log(photoDetails.caption);
+  console.log(`${photoDetails.totalLikes} likes, ${photoDetails.commentCount} comments`);
+}
 ```
 
 ### Complete User Profile
@@ -849,6 +878,8 @@ async function getCompleteUserProfile(username: string) {
     getFollowing(username, 100),
   ]);
 
+  if (!user) return undefined;
+
   return {
     ...user,
     photos,
@@ -860,9 +891,11 @@ async function getCompleteUserProfile(username: string) {
 
 // Usage
 const profile = await getCompleteUserProfile('juanca');
-console.log(`${profile.name} (@${profile.username})`);
-console.log(`${profile.followerCount} followers, ${profile.followingCount} following`);
-console.log(`${profile.photoCount} photos`);
+if (profile) {
+  console.log(`${profile.name} (@${profile.username})`);
+  console.log(`${profile.followerCount} followers, ${profile.followingCount} following`);
+  console.log(`${profile.photoCount} photos`);
+}
 ```
 
 ### Search User Photos
@@ -965,8 +998,8 @@ async function likePhotoSafely(photoId: string, photoOwner: string, likingUserna
     await likePhoto(photoId, photoOwner, likingUsername);
     return { success: true };
   } catch (error: any) {
-    if (error.code === 'TransactionCanceledException') {
-      // Already liked before
+    if (error.name === 'TransactionCanceledException') {
+      // Already liked before (AWS SDK v3 surfaces the error class via `name`)
       return {
         success: false,
         error: 'Already liked this photo',
@@ -1021,8 +1054,8 @@ describe('Instagram Clone', () => {
     const user1 = await getUserProfile('testuser1');
     const user2 = await getUserProfile('testuser2');
 
-    expect(user1.followerCount).toBe(1);
-    expect(user2.followingCount).toBe(1);
+    expect(user1?.followerCount).toBe(1);
+    expect(user2?.followingCount).toBe(1);
   });
 
   it('should like a photo', async () => {
@@ -1031,7 +1064,7 @@ describe('Instagram Clone', () => {
     await likePhoto(photo.photoId, 'testuser1', 'testuser2');
 
     const updatedPhoto = await getPhoto('testuser1', photo.photoId);
-    expect(updatedPhoto.likesCount).toBe(1);
+    expect(updatedPhoto?.likesCount).toBe(1);
   });
 
   it('should add comment to photo', async () => {
