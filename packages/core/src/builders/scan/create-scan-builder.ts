@@ -24,7 +24,8 @@ export function createScanBuilder<Model>(
   indexName?: string,
   exclusiveStartKey?: Record<string, any>,
   segmentConfig?: { segment: number; totalSegments: number },
-  logger?: DynamoDBLogger
+  logger?: DynamoDBLogger,
+  consumedCapacity?: 'INDEXES' | 'TOTAL' | 'NONE'
 ): ScanBuilder<Model> {
   const build = (): ScanBuilder<Model> => ({
     filter(fn) {
@@ -45,7 +46,8 @@ export function createScanBuilder<Model>(
         indexName,
         exclusiveStartKey,
         segmentConfig,
-        logger
+        logger,
+        consumedCapacity
       );
     },
 
@@ -60,7 +62,8 @@ export function createScanBuilder<Model>(
         indexName,
         exclusiveStartKey,
         segmentConfig,
-        logger
+        logger,
+        consumedCapacity
       );
     },
 
@@ -75,7 +78,8 @@ export function createScanBuilder<Model>(
         indexName,
         exclusiveStartKey,
         segmentConfig,
-        logger
+        logger,
+        consumedCapacity
       );
     },
 
@@ -90,7 +94,8 @@ export function createScanBuilder<Model>(
         indexName,
         exclusiveStartKey,
         segmentConfig,
-        logger
+        logger,
+        consumedCapacity
       );
     },
 
@@ -105,7 +110,8 @@ export function createScanBuilder<Model>(
         index,
         exclusiveStartKey,
         segmentConfig,
-        logger
+        logger,
+        consumedCapacity
       );
     },
 
@@ -120,7 +126,8 @@ export function createScanBuilder<Model>(
         indexName,
         key,
         segmentConfig,
-        logger
+        logger,
+        consumedCapacity
       );
     },
 
@@ -135,7 +142,24 @@ export function createScanBuilder<Model>(
         indexName,
         exclusiveStartKey,
         { segment: segmentNumber, totalSegments },
-        logger
+        logger,
+        consumedCapacity
+      );
+    },
+
+    returnConsumedCapacity(mode) {
+      return createScanBuilder(
+        tableName,
+        client,
+        filters,
+        projectionAttrs,
+        limitValue,
+        isConsistentRead,
+        indexName,
+        exclusiveStartKey,
+        segmentConfig,
+        logger,
+        mode
       );
     },
 
@@ -214,6 +238,10 @@ export function createScanBuilder<Model>(
       if (segmentConfig) {
         params.Segment = segmentConfig.segment;
         params.TotalSegments = segmentConfig.totalSegments;
+      }
+
+      if (consumedCapacity) {
+        params.ReturnConsumedCapacity = consumedCapacity;
       }
 
       return params;

@@ -57,6 +57,17 @@ export interface UpdateBuilder<Model> extends Omit<OperationBuilder<Model>, 'dbP
   ): UpdateBuilder<Model>;
 
   /**
+   * Configures the ReturnConsumedCapacity parameter so DynamoDB reports
+   * how many WCUs the update consumed. Useful for diagnosing throttling
+   * and validating cost when index keys are auto-recomputed.
+   *
+   * - INDEXES: Returns consumed capacity for table and indexes
+   * - TOTAL: Returns total consumed capacity
+   * - NONE: No consumed capacity data returned (default)
+   */
+  returnConsumedCapacity(mode: 'INDEXES' | 'TOTAL' | 'NONE'): UpdateBuilder<Model>;
+
+  /**
    * Converts the builder state to DynamoDB UpdateItem parameters
    */
   dbParams(): UpdateCommandInput;

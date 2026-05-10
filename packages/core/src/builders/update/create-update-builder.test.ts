@@ -850,4 +850,34 @@ describe('UpdateBuilder', () => {
       });
     });
   });
+
+  describe('returnConsumedCapacity', () => {
+    test('omits ReturnConsumedCapacity by default', () => {
+      const key: Partial<TestModel> = { pk: 'USER#1', sk: 'USER#1' };
+      const params = createUpdateBuilder<TestModel>(tableName, key, client)
+        .set('name', 'Alice')
+        .dbParams();
+      expect(params.ReturnConsumedCapacity).toBeUndefined();
+    });
+
+    test('passes the configured mode through to dbParams', () => {
+      const key: Partial<TestModel> = { pk: 'USER#1', sk: 'USER#1' };
+      const params = createUpdateBuilder<TestModel>(tableName, key, client)
+        .set('name', 'Alice')
+        .returnConsumedCapacity('TOTAL')
+        .dbParams();
+      expect(params.ReturnConsumedCapacity).toBe('TOTAL');
+    });
+
+    test('persists across other chained calls (immutability)', () => {
+      const key: Partial<TestModel> = { pk: 'USER#1', sk: 'USER#1' };
+      const params = createUpdateBuilder<TestModel>(tableName, key, client)
+        .returnConsumedCapacity('INDEXES')
+        .set('name', 'Alice')
+        .returning('ALL_NEW')
+        .dbParams();
+      expect(params.ReturnConsumedCapacity).toBe('INDEXES');
+      expect(params.ReturnValues).toBe('ALL_NEW');
+    });
+  });
 });

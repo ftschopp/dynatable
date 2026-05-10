@@ -101,6 +101,14 @@ export const createEntityAPI = <Model extends ModelDefinition>(
       // Auto-filter by entity type so query() only returns items for this
       // entity. Without this, queries on shared GSIs return items from other
       // entities that share the same partition key.
+      //
+      // GOTCHA: this is implemented as a `FilterExpression` (`_type = …`),
+      // and DynamoDB applies `Limit` BEFORE filtering. On a single-table
+      // design where many entities share PKs, a `.limit(10)` query can
+      // return 0 items and a non-empty `LastEvaluatedKey` if none of the
+      // first 10 scanned items happen to belong to this entity. Either
+      // ignore Limit when type-mixing is heavy, or paginate via
+      // `iterate()` / `executeWithPagination()` and accumulate yourself.
       const builder = createQueryBuilder<InferModel<Model>>(
         tableName,
         client,
@@ -127,7 +135,13 @@ export const createEntityAPI = <Model extends ModelDefinition>(
     },
 
     scan() {
-      // Auto-filter by entity type so scan only returns items for this entity
+      // Auto-filter by entity type so scan only returns items for this entity.
+      //
+      // Same Limit-vs-Filter gotcha as `query()`: DynamoDB applies `Limit`
+      // before the FilterExpression, so on a multi-entity table a
+      // `.limit(N)` scan may return fewer than N items of THIS entity even
+      // when more exist deeper in the table. Use `iterate()` for "give me
+      // every item of this entity" semantics.
       const typeFilter: Condition = {
         expression: '#_type = :_type',
         names: { '#_type': '_type' },

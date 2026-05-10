@@ -63,6 +63,17 @@ export interface ScanBuilder<Model> extends ExecutableBuilder<Model[]> {
   segment(segmentNumber: number, totalSegments: number): ScanBuilder<Model>;
 
   /**
+   * Configures the ReturnConsumedCapacity parameter so DynamoDB reports
+   * how many RCUs the scan consumed. Useful for diagnosing throttling
+   * and confirming filter selectivity.
+   *
+   * - INDEXES: Returns consumed capacity for table and indexes
+   * - TOTAL: Returns total consumed capacity
+   * - NONE: No consumed capacity data returned (default)
+   */
+  returnConsumedCapacity(mode: 'INDEXES' | 'TOTAL' | 'NONE'): ScanBuilder<Model>;
+
+  /**
    * Executes a single Scan request and returns the page along with the
    * `lastEvaluatedKey` cursor and counts. Use this when you want to drive
    * pagination yourself (e.g. expose a cursor to a client).

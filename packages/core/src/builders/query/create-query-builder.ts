@@ -48,7 +48,24 @@ type QueryState<Model> = {
   exclusiveStartKey?: Record<string, any>;
   logger?: DynamoDBLogger;
   entityType?: string;
+  returnConsumedCapacity?: 'INDEXES' | 'TOTAL' | 'NONE';
 };
+
+/**
+ * Cache of compiled `#<fieldName>\b` regexes used to rewrite a leaf
+ * condition's expression when its field maps onto a key. Without this,
+ * `separateConditions` allocates a fresh `RegExp` per AND-leaf per query —
+ * cheap individually, noisy under load on multi-condition queries.
+ */
+const fieldPlaceholderRegexCache = new Map<string, RegExp>();
+function fieldPlaceholderRegex(fieldName: string): RegExp {
+  let re = fieldPlaceholderRegexCache.get(fieldName);
+  if (!re) {
+    re = new RegExp(`#${fieldName}\\b`, 'g');
+    fieldPlaceholderRegexCache.set(fieldName, re);
+  }
+  return re;
+}
 
 /**
  * Maps a model attribute name to its corresponding DynamoDB key name (PK/SK)
@@ -183,7 +200,7 @@ function separateConditions(
         const rewrittenCond = {
           ...cond,
           expression: cond.expression.replace(
-            new RegExp(`#${fieldName}\\b`, 'g'),
+            fieldPlaceholderRegex(fieldName),
             `#${keyInfo.keyName}`
           ),
           names: {
@@ -280,6 +297,13 @@ function createQueryExecutor<Model>(state: QueryState<Model>): QueryExecutor<Mod
       return createQueryExecutor({
         ...state,
         exclusiveStartKey: key,
+      });
+    },
+
+    returnConsumedCapacity(mode) {
+      return createQueryExecutor({
+        ...state,
+        returnConsumedCapacity: mode,
       });
     },
 
@@ -400,6 +424,9 @@ function createQueryExecutor<Model>(state: QueryState<Model>): QueryExecutor<Mod
         ...(state.consistentReadEnabled && { ConsistentRead: true }),
         ...(state.exclusiveStartKey && {
           ExclusiveStartKey: state.exclusiveStartKey,
+        }),
+        ...(state.returnConsumedCapacity && {
+          ReturnConsumedCapacity: state.returnConsumedCapacity,
         }),
       };
     },

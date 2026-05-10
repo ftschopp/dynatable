@@ -61,6 +61,17 @@ export interface QueryExecutor<Model> extends ExecutableBuilder<Model[]> {
   startFrom(key: Record<string, any>): QueryExecutor<Model>;
 
   /**
+   * Configures the ReturnConsumedCapacity parameter so DynamoDB reports
+   * how many RCUs the query consumed. Useful for diagnosing throttling
+   * and confirming a query hit the expected (G)SI.
+   *
+   * - INDEXES: Returns consumed capacity for table and indexes
+   * - TOTAL: Returns total consumed capacity
+   * - NONE: No consumed capacity data returned (default)
+   */
+  returnConsumedCapacity(mode: 'INDEXES' | 'TOTAL' | 'NONE'): QueryExecutor<Model>;
+
+  /**
    * Returns the raw DynamoDB query parameters
    */
   dbParams(): any;

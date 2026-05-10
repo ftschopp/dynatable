@@ -960,3 +960,49 @@ describe('QueryBuilder - NOT() wrapping a condition', () => {
     expect(params.FilterExpression).toMatch(/NOT \(#username = :username_\d+\)/);
   });
 });
+
+describe('QueryBuilder - returnConsumedCapacity', () => {
+  const client = new DynamoDBClient({});
+  const tableName = 'TestTable';
+
+  interface TestModel {
+    PK: string;
+    SK: string;
+    username: string;
+  }
+
+  const testModel: ModelDefinition = {
+    key: {
+      PK: { type: String, value: 'USER#${username}' },
+      SK: { type: String, value: 'USER#${username}' },
+    },
+    attributes: {
+      username: { type: String, required: true },
+    },
+  };
+
+  test('omits ReturnConsumedCapacity by default', () => {
+    const params = createQueryBuilder<TestModel>(tableName, client, testModel)
+      .where((attr, op) => op.eq(attr.username, 'alice'))
+      .dbParams();
+    expect(params.ReturnConsumedCapacity).toBeUndefined();
+  });
+
+  test('passes the configured mode through to dbParams', () => {
+    const params = createQueryBuilder<TestModel>(tableName, client, testModel)
+      .where((attr, op) => op.eq(attr.username, 'alice'))
+      .returnConsumedCapacity('TOTAL')
+      .dbParams();
+    expect(params.ReturnConsumedCapacity).toBe('TOTAL');
+  });
+
+  test('survives further chained calls (immutability)', () => {
+    const params = createQueryBuilder<TestModel>(tableName, client, testModel)
+      .where((attr, op) => op.eq(attr.username, 'alice'))
+      .returnConsumedCapacity('INDEXES')
+      .limit(5)
+      .dbParams();
+    expect(params.ReturnConsumedCapacity).toBe('INDEXES');
+    expect(params.Limit).toBe(5);
+  });
+});

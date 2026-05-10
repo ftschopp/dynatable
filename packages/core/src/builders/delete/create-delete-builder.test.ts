@@ -291,4 +291,32 @@ describe('DeleteBuilder', () => {
       expect(params.Key).toEqual({ pk: 'USER#1' });
     });
   });
+
+  describe('returnConsumedCapacity', () => {
+    test('omits ReturnConsumedCapacity by default', () => {
+      const key: Partial<TestModel> = { pk: 'USER#1', sk: 'USER#1' };
+      const params = createDeleteBuilder<TestModel>(tableName, key, client).dbParams();
+      expect(params.ReturnConsumedCapacity).toBeUndefined();
+    });
+
+    test('passes the configured mode through to dbParams', () => {
+      const key: Partial<TestModel> = { pk: 'USER#1', sk: 'USER#1' };
+      const params = createDeleteBuilder<TestModel>(tableName, key, client)
+        .returnConsumedCapacity('TOTAL')
+        .dbParams();
+      expect(params.ReturnConsumedCapacity).toBe('TOTAL');
+    });
+
+    test('persists across other chained calls (immutability)', () => {
+      const key: Partial<TestModel> = { pk: 'USER#1', sk: 'USER#1' };
+      const params = createDeleteBuilder<TestModel>(tableName, key, client)
+        .returning('ALL_OLD')
+        .returnConsumedCapacity('INDEXES')
+        .where((attr, op) => op.eq(attr.status, 'inactive'))
+        .dbParams();
+      expect(params.ReturnConsumedCapacity).toBe('INDEXES');
+      expect(params.ReturnValues).toBe('ALL_OLD');
+      expect(params.ConditionExpression).toMatch(/#status = :status_\d+/);
+    });
+  });
 });
