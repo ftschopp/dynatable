@@ -399,7 +399,7 @@ SK: 'METADATA';
 ```typescript
 // ❌ Bad - full table scan
 const posts = await table.entities.Post.scan()
-  .where((attr, op) => op.eq(attr.username, 'alice'))
+  .filter((attr, op) => op.eq(attr.username, 'alice'))
   .execute();
 
 // ✅ Good - efficient query

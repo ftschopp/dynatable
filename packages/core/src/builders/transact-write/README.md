@@ -130,9 +130,9 @@ await table
   )
   .addConditionCheck({
     TableName: 'MyTable',
-    Key: { pk: 'USER#admin', sk: 'USER#admin' },
-    ConditionExpression: 'attribute_exists(#pk)',
-    ExpressionAttributeNames: { '#pk': 'pk' },
+    Key: { PK: 'USER#admin', SK: 'USER#admin' },
+    ConditionExpression: 'attribute_exists(#PK)',
+    ExpressionAttributeNames: { '#PK': 'PK' },
   })
   .execute();
 ```
@@ -160,7 +160,7 @@ import type {
 // addPut accepts PutCommandInput from @aws-sdk/lib-dynamodb
 const putParams: TransactPutParams = {
   TableName: 'MyTable',
-  Item: { pk: 'USER#123', sk: 'USER#123', name: 'John' },
+  Item: { PK: 'USER#123', SK: 'USER#123', name: 'John' },
 };
 
 // TypeScript validates all parameters at compile time

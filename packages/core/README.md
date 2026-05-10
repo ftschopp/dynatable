@@ -30,7 +30,6 @@ pnpm add @ftschopp/dynatable-core
 ```typescript
 import { Table } from '@ftschopp/dynatable-core';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
-import { DynamoDBDocumentClient } from '@aws-sdk/lib-dynamodb';
 
 // Define your schema
 const schema = {
@@ -57,14 +56,12 @@ const schema = {
   },
 } as const;
 
-// Create DynamoDB client
-const ddbClient = new DynamoDBClient({ region: 'us-east-1' });
-const client = DynamoDBDocumentClient.from(ddbClient);
-
-// Create table instance
+// Create table instance — pass the raw DynamoDBClient.
+// Internally Dynatable uses lib-dynamodb commands which marshal/unmarshal
+// JS values automatically; you do NOT need to wrap with DynamoDBDocumentClient.
 const table = new Table({
   name: 'MyTable',
-  client,
+  client: new DynamoDBClient({ region: 'us-east-1' }),
   schema,
 });
 
@@ -218,11 +215,14 @@ type User = InferModelFromSchema<typeof schema, 'User'>;
 type UserInput = InferInputFromSchema<typeof schema, 'User'>;
 // { username: string; name: string; email?: string; followerCount?: number }
 
-// Full model type (deprecated — use InferModelFromSchema)
-type UserLegacy = InferModel<typeof schema.models.User>;
+// Low-level: infer directly from a ModelDefinition.
+// Prefer InferModelFromSchema in user code; use this when you only have
+// the model in hand (e.g. utilities that take a ModelDefinition).
+// Note: does not honor schema-level `params.timestamps`.
+type UserModel = InferModel<typeof schema.models.User>;
 
-// Input type (deprecated — use InferInputFromSchema)
-type UserInputLegacy = InferInput<typeof schema.models.User>;
+// Low-level input variant. Prefer InferInputFromSchema in user code.
+type UserInputRaw = InferInput<typeof schema.models.User>;
 
 // Key input type (only key template variables)
 type UserKey = InferKeyInput<typeof schema.models.User>;
@@ -279,7 +279,7 @@ const photos = await table.entities.Photo.query()
 
 // SCAN - Full table scan with filter
 const activeUsers = await table.entities.User.scan()
-  .where((attr, op) => op.gt(attr.followerCount, 1000))
+  .filter((attr, op) => op.gt(attr.followerCount, 1000))
   .limit(50)
   .execute();
 
@@ -316,14 +316,13 @@ await table
   .addUpdate(table.entities.Photo.update({ photoId: 'photo1' }).add('likesCount', 1).dbParams())
   .execute();
 
-// TransactGet - Atomic reads
-const result = await table
+// TransactGet - Atomic reads. execute() resolves to a flat array of
+// items in the same order as the addGet() calls.
+const [user, photo] = await table
   .transactGet()
   .addGet(table.entities.User.get({ username: 'alice' }).dbParams())
   .addGet(table.entities.Photo.get({ photoId: 'photo1' }).dbParams())
   .execute();
-
-const [user, photo] = result.items;
 ```
 
 ## Available Operators
@@ -378,7 +377,7 @@ const users = await table.entities.User.query()
 
 // IN operator
 const activeUsers = await table.entities.User.scan()
-  .where((attr, op) => op.in(attr.status, ['active', 'pending']))
+  .filter((attr, op) => op.in(attr.status, ['active', 'pending']))
   .execute();
 
 // Size function
@@ -462,11 +461,11 @@ export {
   type IndexDefinition, // Index (hash + optional sort)
   type IndexesDefinition, // All table indexes
   type SchemaParams, // Global schema params
-  type InferModel, // Infer model type (deprecated)
-  type InferInput, // Infer input type (deprecated)
+  type InferModel, // Infer model type from a ModelDefinition (low-level)
+  type InferInput, // Infer input type from a ModelDefinition (low-level)
   type InferKeyInput, // Infer key type
-  type InferModelFromSchema, // Infer from full schema (preferred)
-  type InferInputFromSchema, // Infer input from full schema (preferred)
+  type InferModelFromSchema, // Infer from full schema (preferred for user code)
+  type InferInputFromSchema, // Infer input from full schema (preferred for user code)
   type TimestampFields, // createdAt/updatedAt fields type
   type ArrayItem, // Extract item type from array attribute
   createDynamoDBLogger, // Logger factory
@@ -487,7 +486,7 @@ Each builder type is exported for advanced use cases:
 
 ## Requirements
 
-- Node.js >= 18
+- Node.js >= 22
 - TypeScript >= 5.0 (recommended)
 - AWS SDK v3 (`@aws-sdk/client-dynamodb`, `@aws-sdk/lib-dynamodb`)
 

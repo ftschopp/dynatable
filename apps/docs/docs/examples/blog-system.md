@@ -512,7 +512,7 @@ async function searchPosts(keyword: string) {
   // Note: This uses scan - not efficient for large tables
   // In production, use Elasticsearch or similar
   const allPosts = await table.entities.Post.scan()
-    .where((attr, op) =>
+    .filter((attr, op) =>
       op.and(
         op.eq(attr.published, true),
         op.or(op.contains(attr.title, keyword), op.contains(attr.content, keyword))
@@ -576,7 +576,7 @@ async function createPostSafely(username: string, title: string, content: string
 ## Testing
 
 ```typescript
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll } from '@jest/globals';
 
 describe('Blog System', () => {
   beforeAll(async () => {

@@ -276,9 +276,17 @@ type RequiredKeys<M extends ModelDefinition> = {
 }[keyof NonGeneratedAttributes<M>];
 
 /**
- * Input type used for put/update
+ * Input type used for put/update.
  *
- * @deprecated Use InferInputFromSchema when possible to get timestamp inference
+ * Low-level primitive: takes a `ModelDefinition` directly. Most user code
+ * should prefer `InferInputFromSchema`, the schema-driven entry point that
+ * stays consistent with `InferModelFromSchema`. Use `InferInput` when you
+ * only have a `ModelDefinition` in hand — for example, when authoring
+ * utilities that consume models directly without the surrounding schema.
+ *
+ * Note: `createdAt`/`updatedAt` are never part of the input shape, even
+ * when `params.timestamps` is enabled — they are generated automatically
+ * on put/update.
  */
 export type InferInput<M extends ModelDefinition> = {
   [K in keyof NonGeneratedAttributes<M> as K extends RequiredKeys<M>
@@ -317,9 +325,15 @@ export type TimestampFields = {
 
 /**
  * Infers the model type without exposing internal DynamoDB keys (PK, SK, GSI1PK, etc.)
- * Only includes business attributes and generated fields
+ * Only includes business attributes and generated fields.
  *
- * @deprecated Use InferModelFromSchema when possible to get timestamp inference
+ * Low-level primitive: takes a `ModelDefinition` directly and therefore has
+ * no access to schema-level params (e.g. `params.timestamps`). Most user code
+ * should prefer `InferModelFromSchema`, which honors `params.timestamps` and
+ * automatically includes `createdAt`/`updatedAt` when enabled. Use
+ * `InferModel` when you only have a `ModelDefinition` in hand — for example,
+ * when authoring utilities that consume models directly without the
+ * surrounding schema.
  */
 export type InferModel<M extends ModelDefinition> = ModelAttributes<M>;
 

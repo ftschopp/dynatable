@@ -124,7 +124,7 @@ const [user] = await table
   .transactGet()
   .addGet({
     TableName: 'MyTable',
-    Key: { pk: 'USER#alice', sk: 'USER#alice' },
+    Key: { PK: 'USER#alice', SK: 'USER#alice' },
     ProjectionExpression: 'username, name, followerCount',
     ExpressionAttributeNames: {
       '#username': 'username',

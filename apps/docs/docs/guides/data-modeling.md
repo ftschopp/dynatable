@@ -429,7 +429,7 @@ await table.entities.User.update({ username: "alice" })
 
 // Query only active users
 const activeUsers = await table.entities.User.scan()
-  .where((attr, op) => op.eq(attr.isDeleted, false))
+  .filter((attr, op) => op.eq(attr.isDeleted, false))
   .execute();
 ```
 

@@ -179,7 +179,8 @@ await table.entities.User.update({
   .execute();
 ```
 
-Increment a counter:
+Increment a counter (assumes a `postCount: { type: Number, default: 0 }`
+attribute on the model):
 
 ```typescript
 await table.entities.User.update({
