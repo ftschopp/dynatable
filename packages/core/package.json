@@ -20,10 +20,11 @@
     "access": "public"
   },
   "scripts": {
-    "build": "tsc && tsc-alias",
+    "build": "tsc -p tsconfig.build.json && tsc-alias -p tsconfig.build.json",
     "clean": "rm -rf .turbo && rm -rf node_modules && rm -rf dist",
     "lint": "eslint src",
     "test": "jest",
+    "typecheck": "tsc -p tsconfig.json",
     "prepublishOnly": "yarn build"
   },
   "devDependencies": {

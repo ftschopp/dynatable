@@ -291,6 +291,13 @@ const users = await table.entities.User.batchGet([
 ]).execute();
 
 // BATCH WRITE - Write multiple items
+//
+// `batchWrite` accepts any number of items. Internally `execute()` chunks
+// them into sub-requests of at most 25 items (DynamoDB's hard
+// `BatchWriteItem` limit) and retries UnprocessedItems with exponential
+// backoff (default 3 retries; configurable via `.maxRetries(n)` and
+// `.retryBackoffMs(ms)`). If items remain unprocessed after the retry
+// budget, `BatchUnprocessedError` is thrown.
 await table.entities.User.batchWrite([
   { username: 'alice', name: 'Alice', email: 'alice@example.com' },
   { username: 'bob', name: 'Bob', email: 'bob@example.com' },

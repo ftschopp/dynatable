@@ -125,26 +125,26 @@ describe('Transactions Integration Tests - Instagram Schema', () => {
       expect(params.TransactItems).toHaveLength(2);
 
       // Verify Put operation
-      expect(params.TransactItems[0]).toHaveProperty('Put');
-      expect(params.TransactItems[0]?.Put.Item).toMatchObject({
+      expect(params.TransactItems![0]).toHaveProperty('Put');
+      expect(params.TransactItems![0]?.Put!.Item).toMatchObject({
         photoId: 'photo123',
         likingUsername: 'juanca',
         PK: 'PL#photo123',
         SK: 'LIKE#juanca',
       });
-      expect(params.TransactItems[0]?.Put.ConditionExpression).toContain('attribute_not_exists');
+      expect(params.TransactItems![0]?.Put!.ConditionExpression).toContain('attribute_not_exists');
 
       // Verify Update operation
-      expect(params.TransactItems[1]).toHaveProperty('Update');
-      expect(params.TransactItems[1]?.Update.Key).toEqual({
+      expect(params.TransactItems![1]).toHaveProperty('Update');
+      expect(params.TransactItems![1]?.Update!.Key).toEqual({
         PK: 'UP#alice',
         SK: 'PHOTO#photo123',
       });
-      expect(params.TransactItems[1]?.Update.UpdateExpression).toContain(
+      expect(params.TransactItems![1]?.Update!.UpdateExpression).toContain(
         'ADD #likesCount :likesCount_0'
       );
       // Should also include updatedAt timestamp
-      expect(params.TransactItems[1]?.Update.UpdateExpression).toContain(
+      expect(params.TransactItems![1]?.Update!.UpdateExpression).toContain(
         'SET #updatedAt = :updatedAt_ts'
       );
     });
@@ -171,7 +171,7 @@ describe('Transactions Integration Tests - Instagram Schema', () => {
       expect(params.TransactItems).toHaveLength(3);
 
       // Put Follow
-      expect(params.TransactItems[0]?.Put.Item).toMatchObject({
+      expect(params.TransactItems![0]?.Put!.Item).toMatchObject({
         followedUsername: 'alice',
         followingUsername: 'bob',
         PK: 'FOLLOW#alice',
@@ -179,18 +179,18 @@ describe('Transactions Integration Tests - Instagram Schema', () => {
       });
 
       // Update alice's followerCount
-      expect(params.TransactItems[1]?.Update.Key).toEqual({
+      expect(params.TransactItems![1]?.Update!.Key).toEqual({
         PK: 'USER#alice',
         SK: 'USER#alice',
       });
-      expect(params.TransactItems[1]?.Update.UpdateExpression).toContain('followerCount');
+      expect(params.TransactItems![1]?.Update!.UpdateExpression).toContain('followerCount');
 
       // Update bob's followingCount
-      expect(params.TransactItems[2]?.Update.Key).toEqual({
+      expect(params.TransactItems![2]?.Update!.Key).toEqual({
         PK: 'USER#bob',
         SK: 'USER#bob',
       });
-      expect(params.TransactItems[2]?.Update.UpdateExpression).toContain('followingCount');
+      expect(params.TransactItems![2]?.Update!.UpdateExpression).toContain('followingCount');
     });
 
     test('Comment on Photo (Put Comment + Update Photo.commentCount)', () => {
@@ -216,7 +216,7 @@ describe('Transactions Integration Tests - Instagram Schema', () => {
       expect(params.TransactItems).toHaveLength(2);
 
       // Put Comment
-      expect(params.TransactItems[0]?.Put.Item).toMatchObject({
+      expect(params.TransactItems![0]?.Put!.Item).toMatchObject({
         photoId: 'photo123',
         commentingUsername: 'bob',
         content: 'Great photo!',
@@ -224,11 +224,11 @@ describe('Transactions Integration Tests - Instagram Schema', () => {
       });
 
       // Update Photo commentCount
-      expect(params.TransactItems[1]?.Update.UpdateExpression).toContain(
+      expect(params.TransactItems![1]?.Update!.UpdateExpression).toContain(
         'ADD #commentCount :commentCount_0'
       );
       // Should also include updatedAt timestamp
-      expect(params.TransactItems[1]?.Update.UpdateExpression).toContain(
+      expect(params.TransactItems![1]?.Update!.UpdateExpression).toContain(
         'SET #updatedAt = :updatedAt_ts'
       );
     });
@@ -247,11 +247,11 @@ describe('Transactions Integration Tests - Instagram Schema', () => {
         .dbParams();
 
       expect(params.TransactItems).toHaveLength(1);
-      expect(params.TransactItems[0]?.Delete.Key).toEqual({
+      expect(params.TransactItems![0]?.Delete!.Key).toEqual({
         PK: 'UP#alice',
         SK: 'PHOTO#photo123',
       });
-      expect(params.TransactItems[0]?.Delete.ConditionExpression).toMatch(
+      expect(params.TransactItems![0]?.Delete!.ConditionExpression).toMatch(
         /likesCount.*commentCount/
       );
     });
@@ -277,8 +277,8 @@ describe('Transactions Integration Tests - Instagram Schema', () => {
         .dbParams();
 
       expect(params.TransactItems).toHaveLength(2);
-      expect(params.TransactItems[0]).toHaveProperty('Put');
-      expect(params.TransactItems[1]).toHaveProperty('ConditionCheck');
+      expect(params.TransactItems![0]).toHaveProperty('Put');
+      expect(params.TransactItems![1]).toHaveProperty('ConditionCheck');
     });
 
     test('Unlike Photo (Delete Like + Decrement Photo.likesCount)', () => {
@@ -303,23 +303,23 @@ describe('Transactions Integration Tests - Instagram Schema', () => {
       expect(params.TransactItems).toHaveLength(2);
 
       // Delete Like
-      expect(params.TransactItems[0]?.Delete.Key).toEqual({
+      expect(params.TransactItems![0]?.Delete!.Key).toEqual({
         PK: 'PL#photo123',
         SK: 'LIKE#juanca',
       });
 
       // Update Photo (decrement)
-      expect(params.TransactItems[1]?.Update.Key).toEqual({
+      expect(params.TransactItems![1]?.Update!.Key).toEqual({
         PK: 'UP#alice',
         SK: 'PHOTO#photo123',
       });
-      expect(params.TransactItems[1]?.Update.UpdateExpression).toContain(
+      expect(params.TransactItems![1]?.Update!.UpdateExpression).toContain(
         'ADD #likesCount :likesCount_0'
       );
-      expect(params.TransactItems[1]?.Update.UpdateExpression).toContain(
+      expect(params.TransactItems![1]?.Update!.UpdateExpression).toContain(
         'SET #updatedAt = :updatedAt_ts'
       );
-      expect(params.TransactItems[1]?.Update.ExpressionAttributeValues).toHaveProperty(
+      expect(params.TransactItems![1]?.Update!.ExpressionAttributeValues).toHaveProperty(
         ':likesCount_0'
       );
     });
@@ -385,13 +385,13 @@ describe('Transactions Integration Tests - Instagram Schema', () => {
       expect(params.TransactItems).toHaveLength(2);
 
       // Get User
-      expect(params.TransactItems[0]?.Get.Key).toEqual({
+      expect(params.TransactItems![0]?.Get.Key).toEqual({
         PK: 'USER#alice',
         SK: 'USER#alice',
       });
 
       // Get Photo
-      expect(params.TransactItems[1]?.Get.Key).toEqual({
+      expect(params.TransactItems![1]?.Get.Key).toEqual({
         PK: 'UP#alice',
         SK: 'PHOTO#photo123',
       });
@@ -413,14 +413,14 @@ describe('Transactions Integration Tests - Instagram Schema', () => {
       expect(params.TransactItems).toHaveLength(3);
 
       // Follow
-      expect(params.TransactItems[0]?.Get.Key).toEqual({
+      expect(params.TransactItems![0]?.Get.Key).toEqual({
         PK: 'FOLLOW#alice',
         SK: 'FOLLOW#bob',
       });
 
       // Users
-      expect(params.TransactItems[1]?.Get.Key.PK).toBe('USER#alice');
-      expect(params.TransactItems[2]?.Get.Key.PK).toBe('USER#bob');
+      expect(params.TransactItems![1]?.Get.Key.PK).toBe('USER#alice');
+      expect(params.TransactItems![2]?.Get.Key.PK).toBe('USER#bob');
     });
 
     test('Get Photo + Like + Comment atomically', () => {
@@ -449,19 +449,19 @@ describe('Transactions Integration Tests - Instagram Schema', () => {
       expect(params.TransactItems).toHaveLength(3);
 
       // Photo
-      expect(params.TransactItems[0]?.Get.Key).toEqual({
+      expect(params.TransactItems![0]?.Get.Key).toEqual({
         PK: 'UP#alice',
         SK: 'PHOTO#photo123',
       });
 
       // Like
-      expect(params.TransactItems[1]?.Get.Key).toEqual({
+      expect(params.TransactItems![1]?.Get.Key).toEqual({
         PK: 'PL#photo123',
         SK: 'LIKE#bob',
       });
 
       // Comment
-      expect(params.TransactItems[2]?.Get.Key).toEqual({
+      expect(params.TransactItems![2]?.Get.Key).toEqual({
         PK: 'PC#photo123',
         SK: 'COMMENT#comment456',
       });

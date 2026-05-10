@@ -943,7 +943,7 @@ describe('Should test dbParams function builder', () => {
     ]).dbParams();
 
     expect(params.RequestItems?.InstagramClone).toHaveLength(2);
-    expect(params.RequestItems?.InstagramClone[0]?.PutRequest?.Item).toMatchObject({
+    expect(params.RequestItems?.InstagramClone![0]?.PutRequest?.Item).toMatchObject({
       PK: 'USER#alice',
       SK: 'USER#alice',
       username: 'alice',
@@ -953,7 +953,7 @@ describe('Should test dbParams function builder', () => {
       createdAt: expect.any(String),
       updatedAt: expect.any(String),
     });
-    expect(params.RequestItems?.InstagramClone[1]?.PutRequest?.Item).toMatchObject({
+    expect(params.RequestItems?.InstagramClone![1]?.PutRequest?.Item).toMatchObject({
       PK: 'USER#bob',
       SK: 'USER#bob',
       username: 'bob',

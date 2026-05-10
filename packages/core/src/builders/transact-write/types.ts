@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import type {
   TransactWriteCommandInput,
@@ -39,14 +38,12 @@ export type TransactDeleteParams = DeleteCommandInput | StrictTransactDelete;
 export type TransactConditionCheckParams = StrictTransactConditionCheck;
 
 /**
- * Represents a single item in a TransactWrite operation
- * Using any internally to allow flexibility between CommandInput and strict transaction types
+ * Single item in a TransactWrite operation. Mirrors the SDK's
+ * `TransactWriteCommandInput['TransactItems']` element shape (all four
+ * fields optional) so the builder's accumulated items are assignable to
+ * the SDK input without unsafe casts.
  */
-export type TransactWriteItem =
-  | { Put: any }
-  | { Update: any }
-  | { Delete: any }
-  | { ConditionCheck: any };
+export type TransactWriteItem = TransactWriteItems[number];
 
 /**
  * State for the TransactWrite builder

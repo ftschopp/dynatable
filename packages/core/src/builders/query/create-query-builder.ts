@@ -499,17 +499,14 @@ export function createQueryBuilder<Model>(
       // Call the user's function to get the condition tree
       const condition = fn(attrProxy, opBuilder);
 
-      // Create initial state with the condition
-      const initialState: QueryState<Model> = {
+      return createQueryExecutor({
         tableName,
         client,
-        model,
         condition,
+        model,
         logger,
         entityType,
-      };
-
-      return createQueryExecutor(initialState);
+      });
     },
   };
 }

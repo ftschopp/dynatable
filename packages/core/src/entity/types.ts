@@ -79,8 +79,15 @@ export type EntityAPI<Model, Input, KeyInput> = {
   batchGet: (keys: KeyInput[]) => BatchGetBuilder<Model>;
 
   /**
-   * Writes multiple items in a single batch operation (puts or deletes).
-   * @param items - Array of items to put
+   * Writes multiple items in a single batch operation.
+   *
+   * Accepts any number of items: `execute()` chunks the request into
+   * sub-requests of at most 25 items (DynamoDB's hard `BatchWriteItem`
+   * limit) and retries any UnprocessedItems with exponential backoff.
+   * If items remain unprocessed after the retry budget, a
+   * `BatchUnprocessedError` is thrown.
+   *
+   * @param items - Items to put. No upper bound — chunking is transparent.
    * @returns BatchWriteBuilder configured for the items
    */
   batchWrite: (items: Input[]) => BatchWriteBuilder;
