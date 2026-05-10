@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
-import { InferModel, KeyDefinition, ModelDefinition } from '@/core/types';
+import { IndexesDefinition, InferModel, KeyDefinition, ModelDefinition } from '@/core/types';
 import { ulid } from 'ulid';
 
 /**
@@ -156,9 +156,38 @@ export const applyPostDefaults = <M extends ModelDefinition>(
 };
 
 /**
- * Internal DynamoDB keys that should be stripped when cleanInternalKeys is enabled
+ * Default fallback list used when the caller doesn't pass a schema-derived
+ * set. Covers only the conventional primary-key column names (PK, SK) and
+ * the entity-type discriminator. Real consumers should pass the
+ * schema-derived list returned by {@link collectInternalKeyColumns} so that
+ * GSI/LSI columns and custom-named primary keys are also stripped.
  */
-const INTERNAL_KEYS = ['PK', 'SK', '_type'] as const;
+const DEFAULT_INTERNAL_KEYS: readonly string[] = ['PK', 'SK', '_type'];
+
+/**
+ * Derives the list of column names that should be stripped from returned
+ * items when `cleanInternalKeys` is enabled, based on the schema's index
+ * configuration. Returns the union of every index's hash + sort columns
+ * plus the `_type` discriminator.
+ *
+ * Examples:
+ * - `{ primary: { hash: 'PK', sort: 'SK' }, gsi1: { hash: 'GSI1PK', sort: 'GSI1SK' } }`
+ *   → `['PK', 'SK', 'GSI1PK', 'GSI1SK', '_type']`
+ * - `{ primary: { hash: 'pk', sort: 'sk' } }` → `['pk', 'sk', '_type']`
+ */
+export const collectInternalKeyColumns = (
+  indexes: IndexesDefinition | undefined
+): string[] => {
+  const cols = new Set<string>();
+  if (indexes) {
+    for (const idx of Object.values(indexes)) {
+      if (idx?.hash) cols.add(idx.hash);
+      if (idx?.sort) cols.add(idx.sort);
+    }
+  }
+  cols.add('_type');
+  return [...cols];
+};
 
 /**
  * Removes internal DynamoDB keys from an item or array of items.
@@ -169,15 +198,22 @@ const INTERNAL_KEYS = ['PK', 'SK', '_type'] as const;
  * passed through untouched — recursing into them would lose their type.
  *
  * @param data - Single item, array of items, or any nested value from DynamoDB
+ * @param internalKeys - Column names to strip. Defaults to `['PK', 'SK', '_type']`
+ *   for backwards compatibility; consumers operating on a real schema should
+ *   derive the list with {@link collectInternalKeyColumns} so GSI/LSI keys
+ *   and custom-named primary keys are also removed.
  * @returns Data with internal keys removed at every level
  */
-export const stripInternalKeys = <T>(data: T | T[] | undefined): T | T[] | undefined => {
+export const stripInternalKeys = <T>(
+  data: T | T[] | undefined,
+  internalKeys: readonly string[] = DEFAULT_INTERNAL_KEYS
+): T | T[] | undefined => {
   if (data === undefined || data === null) {
     return data;
   }
 
   if (Array.isArray(data)) {
-    return data.map((item) => stripInternalKeys(item)) as T[];
+    return data.map((item) => stripInternalKeys(item, internalKeys)) as T[];
   }
 
   // Only recurse into plain objects; preserve Date, Buffer, Set, Map,
@@ -185,8 +221,8 @@ export const stripInternalKeys = <T>(data: T | T[] | undefined): T | T[] | undef
   if (typeof data === 'object' && Object.getPrototypeOf(data) === Object.prototype) {
     const cleaned: any = {};
     for (const [key, value] of Object.entries(data)) {
-      if (INTERNAL_KEYS.includes(key as any)) continue;
-      cleaned[key] = stripInternalKeys(value);
+      if (internalKeys.includes(key)) continue;
+      cleaned[key] = stripInternalKeys(value, internalKeys);
     }
     return cleaned as T;
   }

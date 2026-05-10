@@ -17,6 +17,14 @@ export type EntityAPIOptions = {
   logger?: DynamoDBLogger;
   timestamps?: boolean;
   cleanInternalKeys?: boolean;
+  /**
+   * Schema-derived list of column names that `cleanInternalKeys` should
+   * strip from returned items. When omitted, falls back to the default
+   * `['PK', 'SK', '_type']` — which misses GSI/LSI columns and any
+   * primary key not literally named `PK` / `SK`. The Table constructor
+   * always populates this from `schema.indexes`.
+   */
+  internalKeys?: readonly string[];
 };
 
 /**

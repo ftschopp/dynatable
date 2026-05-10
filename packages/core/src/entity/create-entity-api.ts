@@ -37,10 +37,12 @@ export const createEntityAPI = <Model extends ModelDefinition>(
   client: DynamoDBClient,
   options: EntityAPIOptions = {}
 ): EntityAPI<InferModel<Model>, InferInput<Model>, InferKeyInput<Model>> => {
-  const { logger, timestamps = false, cleanInternalKeys = false } = options;
+  const { logger, timestamps = false, cleanInternalKeys = false, internalKeys } = options;
 
   // Build a Zod schema from the model
   const zodSchema = modelToZod(model);
+
+  const cleanKeysMiddleware = createCleanKeysMiddleware(cleanInternalKeys, internalKeys);
 
   return {
     get(key) {
@@ -58,7 +60,7 @@ export const createEntityAPI = <Model extends ModelDefinition>(
         logger
       );
 
-      return withMiddleware(builder, createCleanKeysMiddleware(cleanInternalKeys));
+      return withMiddleware(builder, cleanKeysMiddleware);
     },
 
     put(item) {
@@ -81,14 +83,47 @@ export const createEntityAPI = <Model extends ModelDefinition>(
         _type: modelName, // Add entity type identifier
       };
 
-      return createPutBuilder(tableName, fullItem, client, [], false, 'NONE', false, logger);
+      const builder = createPutBuilder(
+        tableName,
+        fullItem,
+        client,
+        [],
+        false,
+        'NONE',
+        false,
+        logger
+      );
+
+      return withMiddleware(builder, cleanKeysMiddleware);
     },
 
     query() {
       // Auto-filter by entity type so query() only returns items for this
       // entity. Without this, queries on shared GSIs return items from other
       // entities that share the same partition key.
-      return createQueryBuilder<InferModel<Model>>(tableName, client, model, logger, modelName);
+      const builder = createQueryBuilder<InferModel<Model>>(
+        tableName,
+        client,
+        model,
+        logger,
+        modelName
+      );
+
+      // QueryBuilder exposes only `where()` — the executable surface lives
+      // on the QueryExecutor it returns. Wrap that executor's `execute()`
+      // so cleanInternalKeys is honored on the common direct path.
+      //
+      // KNOWN LIMITATION: chained executor calls (`.limit()`, `.useIndex()`,
+      // etc.) recreate a fresh executor without the wrap, and
+      // `executeWithPagination()` / `iterate()` are not wrapped at all.
+      // This matches the pre-existing behavior of scan/update/delete and is
+      // tracked as a follow-up — pushing cleanup down into the builders
+      // themselves is the proper fix.
+      return {
+        where(fn) {
+          return withMiddleware(builder.where(fn), cleanKeysMiddleware);
+        },
+      };
     },
 
     scan() {
@@ -112,7 +147,7 @@ export const createEntityAPI = <Model extends ModelDefinition>(
         logger
       );
 
-      return withMiddleware(builder, createCleanKeysMiddleware(cleanInternalKeys));
+      return withMiddleware(builder, cleanKeysMiddleware);
     },
 
     update(key) {
@@ -137,7 +172,7 @@ export const createEntityAPI = <Model extends ModelDefinition>(
         { model, keyVars: key as Record<string, unknown> }
       );
 
-      return withMiddleware(builder, createCleanKeysMiddleware(cleanInternalKeys));
+      return withMiddleware(builder, cleanKeysMiddleware);
     },
 
     delete(key) {
@@ -156,7 +191,7 @@ export const createEntityAPI = <Model extends ModelDefinition>(
         logger
       );
 
-      return withMiddleware(builder, createCleanKeysMiddleware(cleanInternalKeys));
+      return withMiddleware(builder, cleanKeysMiddleware);
     },
 
     batchGet(keys) {
@@ -183,7 +218,7 @@ export const createEntityAPI = <Model extends ModelDefinition>(
         logger
       );
 
-      return withMiddleware(builder, createCleanKeysMiddleware(cleanInternalKeys));
+      return withMiddleware(builder, cleanKeysMiddleware);
     },
 
     batchWrite(items) {
