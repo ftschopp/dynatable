@@ -1,6 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { applyPostDefaults, computeIndexUpdates, stripInternalKeys } from './model-utils';
-import { ModelDefinition } from '../core/types';
+import {
+  applyPostDefaults,
+  collectInternalKeyColumns,
+  computeIndexUpdates,
+  stripInternalKeys,
+} from './model-utils';
+import { IndexesDefinition, ModelDefinition } from '../core/types';
 
 describe('applyPostDefaults - Timestamps', () => {
   const testModel: ModelDefinition = {
@@ -382,6 +387,112 @@ describe('stripInternalKeys', () => {
     const result = stripInternalKeys(input) as { createdAt: Date };
     expect(result.createdAt).toBeInstanceOf(Date);
     expect(result.createdAt.getTime()).toBe(date.getTime());
+  });
+
+  test('strips schema-derived GSI columns when passed a custom internalKeys list', () => {
+    // The hardcoded fallback only strips PK/SK/_type, so GSI1PK/GSI1SK leak
+    // through. Passing a schema-derived list closes that gap.
+    const input = {
+      PK: 'PL#photo1',
+      SK: 'LIKE#alice',
+      GSI1PK: 'PL#photo1',
+      GSI1SK: 'LIKE#01H...',
+      _type: 'Like',
+      photoId: 'photo1',
+      likingUsername: 'alice',
+    };
+
+    const internalKeys = ['PK', 'SK', 'GSI1PK', 'GSI1SK', '_type'];
+
+    expect(stripInternalKeys(input, internalKeys)).toEqual({
+      photoId: 'photo1',
+      likingUsername: 'alice',
+    });
+  });
+
+  test('handles custom-named primary keys (e.g., lowercase pk/sk)', () => {
+    const input = {
+      pk: 'USER#alice',
+      sk: 'PROFILE',
+      _type: 'User',
+      username: 'alice',
+    };
+
+    expect(stripInternalKeys(input, ['pk', 'sk', '_type'])).toEqual({
+      username: 'alice',
+    });
+
+    // The default fallback would NOT strip lowercase pk/sk — sanity check.
+    expect(stripInternalKeys(input)).toEqual({
+      pk: 'USER#alice',
+      sk: 'PROFILE',
+      username: 'alice',
+    });
+  });
+
+  test('forwards the custom internalKeys list through nested structures', () => {
+    const input = {
+      PK: 'USER#alice',
+      GSI1PK: 'AUDIT#2025',
+      friends: [
+        { PK: 'USER#bob', GSI1PK: 'AUDIT#2025', name: 'bob' },
+        { PK: 'USER#carol', GSI1PK: 'AUDIT#2025', name: 'carol' },
+      ],
+    };
+
+    expect(stripInternalKeys(input, ['PK', 'GSI1PK'])).toEqual({
+      friends: [{ name: 'bob' }, { name: 'carol' }],
+    });
+  });
+});
+
+describe('collectInternalKeyColumns', () => {
+  test('returns the conventional set for primary + GSI1', () => {
+    const indexes: IndexesDefinition = {
+      primary: { hash: 'PK', sort: 'SK' },
+      gsi1: { hash: 'GSI1PK', sort: 'GSI1SK' },
+    };
+
+    const result = collectInternalKeyColumns(indexes);
+
+    // Order: insertion order from the schema, with `_type` appended.
+    expect(result).toEqual(['PK', 'SK', 'GSI1PK', 'GSI1SK', '_type']);
+  });
+
+  test('handles a hash-only primary index (no sort key)', () => {
+    const indexes: IndexesDefinition = {
+      primary: { hash: 'PK' },
+    };
+
+    expect(collectInternalKeyColumns(indexes)).toEqual(['PK', '_type']);
+  });
+
+  test('handles non-conventional column names', () => {
+    const indexes: IndexesDefinition = {
+      primary: { hash: 'pk', sort: 'sk' },
+      lookup: { hash: 'lookupPK', sort: 'lookupSK' },
+    };
+
+    expect(collectInternalKeyColumns(indexes)).toEqual([
+      'pk',
+      'sk',
+      'lookupPK',
+      'lookupSK',
+      '_type',
+    ]);
+  });
+
+  test('deduplicates when an index reuses the primary hash column', () => {
+    const indexes: IndexesDefinition = {
+      primary: { hash: 'PK', sort: 'SK' },
+      shared: { hash: 'PK', sort: 'AltSK' },
+    };
+
+    expect(collectInternalKeyColumns(indexes)).toEqual(['PK', 'SK', 'AltSK', '_type']);
+  });
+
+  test('always includes _type even with no indexes provided', () => {
+    expect(collectInternalKeyColumns(undefined)).toEqual(['_type']);
   });
 });
 

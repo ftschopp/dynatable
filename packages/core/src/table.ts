@@ -10,6 +10,7 @@ import { createEntityAPI, EntityAPI } from './entity';
 import { createTransactWriteBuilder, TransactWriteBuilder } from './builders/transact-write';
 import { createTransactGetBuilder, TransactGetBuilder } from './builders/transact-get';
 import { DynamoDBLogger } from './utils/dynamodb-logger';
+import { collectInternalKeyColumns } from './utils/model-utils';
 
 /**
  * Configuration options for the Table instance
@@ -60,6 +61,13 @@ export class Table<S extends SchemaDefinition> {
 
     this.client = client;
 
+    // Derive the full list of internal column names (primary + every GSI/LSI
+    // hash & sort key, plus the `_type` discriminator) once, from the schema
+    // itself. This way `cleanInternalKeys` strips GSI columns like
+    // `GSI1PK`/`GSI1SK` that the hardcoded fallback misses, and also works
+    // for schemas that use non-conventional primary key names.
+    const internalKeys = collectInternalKeyColumns(schema.indexes);
+
     const rawEntities: Record<string, any> = {};
 
     for (const modelName in schema.models) {
@@ -72,6 +80,7 @@ export class Table<S extends SchemaDefinition> {
         logger,
         timestamps: schema.params?.timestamps ?? false,
         cleanInternalKeys: schema.params?.cleanInternalKeys ?? false,
+        internalKeys,
       });
     }
 
