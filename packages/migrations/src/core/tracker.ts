@@ -183,7 +183,14 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
   }
 
   /**
-   * Get all applied migrations with pagination support
+   * Get all applied migrations with pagination support.
+   *
+   * Projects only the lightweight bookkeeping fields — the heavy
+   * `schemaDefinition` and `schemaChanges` blobs are intentionally omitted,
+   * because no internal caller reads them and including them blows up the
+   * 1MB-per-page budget (and consumed RCU) on tables with many migrations.
+   * If a future caller needs the full record, fetch by version with
+   * `getMigration(version)`.
    */
   async getAppliedMigrations(): Promise<MigrationRecord[]> {
     const items: MigrationRecord[] = [];
@@ -194,6 +201,15 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
         new QueryCommand({
           TableName: this.tableName,
           KeyConditionExpression: 'PK = :pk',
+          // `name` and `status` are DynamoDB reserved words; alias them.
+          ProjectionExpression:
+            'PK, SK, version, #name, #status, appliedAt, #ts, #err, checksum, failedAt, rolledBackAt, description',
+          ExpressionAttributeNames: {
+            '#name': 'name',
+            '#status': 'status',
+            '#ts': 'timestamp',
+            '#err': 'error',
+          },
           ExpressionAttributeValues: {
             ':pk': this.trackingPrefix,
           },
@@ -396,19 +412,30 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
   }
 
   /**
-   * Mark migration as rolled back using TransactWrite for atomicity
+   * Mark migration as rolled back using TransactWrite for atomicity.
+   *
+   * @param previousVersion Optional. The version the CURRENT pointer should
+   *   move to after this rollback. When the caller already knows it (the
+   *   runner does — it loaded the applied list once at the top of `down()`),
+   *   passing it here skips a `getAppliedMigrations()` Query per rollback.
+   *   Without this hint, a multi-step rollback was N×(paginated Query of
+   *   the entire migration history). When omitted, the tracker falls back
+   *   to looking it up.
    */
-  async markAsRolledBack(version: string): Promise<void> {
+  async markAsRolledBack(version: string, previousVersion?: string): Promise<void> {
     this.requireLock();
     const now = new Date().toISOString();
 
-    // Find previous version
-    const migrations = await this.getAppliedMigrations();
-    const appliedMigrations = migrations
-      .filter((m) => m.status === 'applied' && m.version !== version)
-      .sort((a, b) => compareSemver(b.version, a.version));
+    let resolvedPrevious = previousVersion;
+    if (resolvedPrevious === undefined) {
+      // Find previous version
+      const migrations = await this.getAppliedMigrations();
+      const appliedMigrations = migrations
+        .filter((m) => m.status === 'applied' && m.version !== version)
+        .sort((a, b) => compareSemver(b.version, a.version));
 
-    const previousVersion = appliedMigrations[0]?.version || 'v0000';
+      resolvedPrevious = appliedMigrations[0]?.version || 'v0000';
+    }
 
     // Use TransactWrite to atomically update record and pointer
     await this.client.send(
@@ -442,9 +469,9 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
               UpdateExpression:
                 'SET currentVersion = :version, updatedAt = :updatedAt, GSI1SK = :gsi1sk',
               ExpressionAttributeValues: {
-                ':version': previousVersion,
+                ':version': resolvedPrevious,
                 ':updatedAt': now,
-                ':gsi1sk': previousVersion,
+                ':gsi1sk': resolvedPrevious,
               },
             },
           },

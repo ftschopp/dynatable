@@ -172,9 +172,14 @@ export interface MigrationTracker {
   ): Promise<void>;
 
   /**
-   * Mark migration as rolled back
+   * Mark migration as rolled back.
+   *
+   * `previousVersion` is an optional perf hint: if the caller already knows
+   * the applied version that should become the new CURRENT pointer, passing
+   * it here avoids a redundant lookup of the full migration history. When
+   * omitted, the implementation looks it up.
    */
-  markAsRolledBack(version: string): Promise<void>;
+  markAsRolledBack(version: string, previousVersion?: string): Promise<void>;
 
   /**
    * Mark migration as failed
