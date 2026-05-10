@@ -49,12 +49,17 @@ export const BlogSchema = {
   },
   params: {
     timestamps: true, // Automatic createdAt and updatedAt as ISO strings
+    cleanInternalKeys: true, // Strip PK/SK/_type from returned items
   },
 } as const;
 ```
 
 :::tip
 The `as const` at the end is crucial for proper TypeScript type inference.
+:::
+
+:::note
+`cleanInternalKeys: true` removes the internal `PK`, `SK`, and `_type` fields from items returned by your operations. Without it, those fields appear alongside your business attributes.
 :::
 
 ## 2. Create the Table Instance
@@ -103,7 +108,15 @@ console.log('Table created successfully!');
 ```
 
 :::info
-For local development, make sure DynamoDB Local is running first.
+To use DynamoDB Local instead of real AWS, point your client at it explicitly:
+
+```typescript
+const client = new DynamoDBClient({
+  region: 'us-east-1',
+  endpoint: 'http://localhost:8000',
+  credentials: { accessKeyId: 'dummy', secretAccessKey: 'dummy' },
+});
+```
 :::
 
 ## 4. Perform CRUD Operations
@@ -155,7 +168,7 @@ const user = await table.entities.User.get({
   username: 'alice',
 }).execute();
 
-console.log(user.name); // 'Alice Smith'
+console.log(user?.name); // 'Alice Smith' (user is User | undefined)
 ```
 
 Get a specific post:
@@ -275,6 +288,7 @@ const BlogSchema = {
   },
   params: {
     timestamps: true,
+    cleanInternalKeys: true,
   },
 } as const;
 
@@ -297,7 +311,7 @@ async function main() {
     username: 'alice',
   }).execute();
 
-  console.log(user);
+  console.log(user); // user is User | undefined
 
   // Update
   await table.entities.User.update({ username: 'alice' }).set('name', 'Alice Johnson').execute();
@@ -308,7 +322,10 @@ async function main() {
   }).execute();
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
 ```
 
 ## What's Next?
