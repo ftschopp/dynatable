@@ -1,6 +1,6 @@
 import type { UpdateCommandInput } from '@aws-sdk/lib-dynamodb';
 import { ModelDefinition } from '@/core/types';
-import { OperationBuilder, AttrRef } from '../shared';
+import { OperationBuilder, AttrRef, AttrBuilder, OpBuilder, Condition } from '../shared';
 
 /**
  * Update actions that can be performed on attributes
@@ -27,7 +27,18 @@ export type IndexContext = {
 /**
  * Builder interface for DynamoDB UpdateItem operations
  */
-export interface UpdateBuilder<Model> extends Omit<OperationBuilder<Model>, 'dbParams'> {
+export interface UpdateBuilder<Model> extends Omit<OperationBuilder<Model>, 'dbParams' | 'where'> {
+  /**
+   * Adds a condition expression to the update operation. Returns a new
+   * immutable builder.
+   *
+   * Override of `OperationBuilder.where(): this` because `Omit<>` doesn't
+   * preserve `this`-polymorphism — chains like `.where(...).set(...)` or
+   * `.where(...).returning(...)` would otherwise widen to
+   * `OperationBuilder<Model>` and lose the update-specific methods.
+   */
+  where(fn: (attr: AttrBuilder<Model>, op: OpBuilder) => Condition): UpdateBuilder<Model>;
+
   /**
    * Sets an attribute to a specific value, or sets multiple attributes at once
    */

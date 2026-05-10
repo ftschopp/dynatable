@@ -168,7 +168,7 @@ describe('applyPostDefaults - Timestamps', () => {
 
       expect(result.id).toBeDefined();
       expect(typeof result.id).toBe('string');
-      expect(result.id.length).toBeGreaterThan(0);
+      expect((result.id as string).length).toBeGreaterThan(0);
       expect(result.createdAt).toEqual('2024-01-15T10:00:00.000Z');
       expect(result.updatedAt).toEqual('2024-01-15T10:00:00.000Z');
     });
