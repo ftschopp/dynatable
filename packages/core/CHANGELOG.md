@@ -1,3 +1,10 @@
+# @ftschopp/dynatable-core [1.6.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.5.2...@ftschopp/dynatable-core@1.6.0) (2026-05-10)
+
+
+### Features
+
+* **core:** expose ReturnConsumedCapacity on query/scan/update/put/delete ([#44](https://github.com/ftschopp/dynatable/issues/44)) ([048e52f](https://github.com/ftschopp/dynatable/commit/048e52f8172cd13a0ad1720e8c701af8bf20603d))
+
 ## @ftschopp/dynatable-core [1.5.2](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.5.1...@ftschopp/dynatable-core@1.5.2) (2026-05-10)
 
 
