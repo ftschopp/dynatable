@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-core [1.5.1](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.5.0...@ftschopp/dynatable-core@1.5.1) (2026-05-10)
+
+
+### Bug Fixes
+
+* **core:** close cleanInternalKeys gaps — derive from schema; cover put/query ([#41](https://github.com/ftschopp/dynatable/issues/41)) ([b429f36](https://github.com/ftschopp/dynatable/commit/b429f360ef70fec9612bc983b14903f2d1c1df91))
+
 # @ftschopp/dynatable-core [1.5.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.4.4...@ftschopp/dynatable-core@1.5.0) (2026-05-09)
 
 
