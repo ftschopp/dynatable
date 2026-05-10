@@ -14,6 +14,7 @@ describe('UpdateBuilder', () => {
     score?: number;
     tags?: string[];
     followerCount?: number;
+    status?: string;
   }
 
   describe('SET operations', () => {

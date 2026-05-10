@@ -149,9 +149,9 @@ describe('TransactWrite Builder - Functional API', () => {
       .dbParams();
 
     expect(params.TransactItems).toHaveLength(3);
-    expect(params.TransactItems[0]).toEqual({ Put: putFollowParams });
-    expect(params.TransactItems[1]).toEqual({ Update: updateFollowedParams });
-    expect(params.TransactItems[2]).toEqual({ Update: updateFollowingParams });
+    expect(params.TransactItems?.[0]).toEqual({ Put: putFollowParams });
+    expect(params.TransactItems?.[1]).toEqual({ Update: updateFollowedParams });
+    expect(params.TransactItems?.[2]).toEqual({ Update: updateFollowingParams });
   });
 
   test('should chain multiple operations - Comment on Photo', () => {
@@ -181,8 +181,8 @@ describe('TransactWrite Builder - Functional API', () => {
       .dbParams();
 
     expect(params.TransactItems).toHaveLength(2);
-    expect(params.TransactItems[0]).toEqual({ Put: putCommentParams });
-    expect(params.TransactItems[1]).toEqual({ Update: updatePhotoParams });
+    expect(params.TransactItems?.[0]).toEqual({ Put: putCommentParams });
+    expect(params.TransactItems?.[1]).toEqual({ Update: updatePhotoParams });
   });
 
   test('should support client request token for idempotency', () => {
@@ -237,7 +237,7 @@ describe('TransactWrite Builder - Functional API', () => {
     const params = createTransactWriteBuilder(client).addDelete(deletePhotoParams).dbParams();
 
     expect(params.TransactItems).toHaveLength(1);
-    expect(params.TransactItems[0]).toEqual({ Delete: deletePhotoParams });
+    expect(params.TransactItems?.[0]).toEqual({ Delete: deletePhotoParams });
   });
 
   test('should handle max operations (100 items limit)', () => {
@@ -280,9 +280,9 @@ describe('TransactWrite Builder - Functional API', () => {
       .dbParams();
 
     expect(params.TransactItems).toHaveLength(4);
-    expect(params.TransactItems[0]).toHaveProperty('Put');
-    expect(params.TransactItems[1]).toHaveProperty('Update');
-    expect(params.TransactItems[2]).toHaveProperty('Delete');
-    expect(params.TransactItems[3]).toHaveProperty('ConditionCheck');
+    expect(params.TransactItems?.[0]).toHaveProperty('Put');
+    expect(params.TransactItems?.[1]).toHaveProperty('Update');
+    expect(params.TransactItems?.[2]).toHaveProperty('Delete');
+    expect(params.TransactItems?.[3]).toHaveProperty('ConditionCheck');
   });
 });

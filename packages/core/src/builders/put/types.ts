@@ -1,10 +1,21 @@
 import type { PutCommandInput } from '@aws-sdk/lib-dynamodb';
-import { OperationBuilder } from '../shared';
+import { OperationBuilder, AttrBuilder, OpBuilder, Condition } from '../shared';
 
 /**
  * Builder interface for DynamoDB PutItem operations
  */
-export interface PutBuilder<Model> extends Omit<OperationBuilder<Model>, 'dbParams'> {
+export interface PutBuilder<Model> extends Omit<OperationBuilder<Model>, 'dbParams' | 'where'> {
+  /**
+   * Adds a condition expression to the put operation. Returns a new
+   * immutable builder.
+   *
+   * Override of `OperationBuilder.where(): this` because `Omit<>` doesn't
+   * preserve `this`-polymorphism — chains like `.where(...).ifNotExists()`
+   * would otherwise widen to `OperationBuilder<Model>` and lose the
+   * put-specific methods.
+   */
+  where(fn: (attr: AttrBuilder<Model>, op: OpBuilder) => Condition): PutBuilder<Model>;
+
   /**
    * Adds a condition that the item must not exist (checks pk and sk)
    */
