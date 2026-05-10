@@ -30,6 +30,16 @@ function categorizeLoadError(error: unknown): string {
  */
 export class MigrationLoader {
   private migrationsDir: string;
+  /**
+   * Memoized result of `loadMigrations()`. Set on first successful load and
+   * reused for the lifetime of the loader instance. The runner consults the
+   * loader many times per command (per-version checksum check, per-rollback
+   * lookup, status display) — without this, each call re-runs `readdirSync`,
+   * re-imports every migration module, and re-md5s every file, turning an
+   * O(N) operation into O(N²) in IO and require()s. Call `invalidateCache()`
+   * if you need to pick up newly-added files mid-process.
+   */
+  private cachedMigrations: MigrationFile[] | null = null;
 
   constructor(migrationsDir: string) {
     this.migrationsDir = migrationsDir;
@@ -44,9 +54,21 @@ export class MigrationLoader {
   }
 
   /**
+   * Drop the in-memory cache so the next `loadMigrations()` call re-reads
+   * the directory. Use after generating a new migration file mid-process.
+   */
+  invalidateCache(): void {
+    this.cachedMigrations = null;
+  }
+
+  /**
    * Load all migration files
    */
   async loadMigrations(): Promise<MigrationFile[]> {
+    if (this.cachedMigrations) {
+      return this.cachedMigrations;
+    }
+
     if (!fs.existsSync(this.migrationsDir)) {
       throw new Error(`Migrations directory not found: ${this.migrationsDir}`);
     }
@@ -77,6 +99,7 @@ export class MigrationLoader {
       }
     }
 
+    this.cachedMigrations = migrations;
     return migrations;
   }
 

@@ -75,9 +75,18 @@ export class MigrationRunner {
         .filter((m) => m.status === 'applied')
         .map((m) => m.version);
 
+      // Load every migration once and index by version. Without this, the
+      // checksum-mismatch loop below would call `loader.getMigration(...)`
+      // for each applied migration — and each of those re-reads the
+      // directory and re-imports every file. The loader caches the result
+      // internally, but going through a Map here also flattens the per-call
+      // microtask overhead.
+      const allMigrations = await this.loader.loadMigrations();
+      const migrationByVersion = new Map(allMigrations.map((m) => [m.version, m]));
+
       // Check for checksum mismatches on applied migrations
       for (const applied of appliedMigrations.filter((m) => m.status === 'applied')) {
-        const file = await this.loader.getMigration(applied.version);
+        const file = migrationByVersion.get(applied.version);
         if (file && applied.checksum && file.checksum !== applied.checksum) {
           console.warn(
             `⚠️  Warning: Migration ${applied.version} has been modified since it was applied. ` +
@@ -86,7 +95,7 @@ export class MigrationRunner {
         }
       }
 
-      let pendingMigrations = await this.loader.getPendingMigrations(appliedVersions);
+      let pendingMigrations = allMigrations.filter((m) => !appliedVersions.includes(m.version));
 
       // Apply limit if specified
       if (limit) {
@@ -175,10 +184,14 @@ export class MigrationRunner {
 
     try {
       const appliedMigrations = await this.tracker.getAppliedMigrations();
-      const applied = appliedMigrations
+      // Full applied list, semver-descending. We need the whole thing (not
+      // just the slice we're about to roll back) so we can tell the tracker
+      // what version the CURRENT pointer should fall back to after each
+      // step — without making it re-Query the migration history every time.
+      const allApplied = appliedMigrations
         .filter((m) => m.status === 'applied')
-        .sort((a, b) => compareSemver(b.version, a.version))
-        .slice(0, steps);
+        .sort((a, b) => compareSemver(b.version, a.version));
+      const applied = allApplied.slice(0, steps);
 
       if (applied.length === 0) {
         console.log('✅ No migrations to rollback');
@@ -196,11 +209,17 @@ export class MigrationRunner {
 
       console.log(`\n📦 Rolling back ${applied.length} migration(s)\n`);
 
+      // Load every migration once. The loader caches internally, but routing
+      // through a Map here keeps the hot loop free of per-call awaits.
+      const allMigrations = await this.loader.loadMigrations();
+      const migrationByVersion = new Map(allMigrations.map((m) => [m.version, m]));
+
       const rolledBack: MigrationFile[] = [];
 
-      for (const record of applied) {
+      for (let i = 0; i < applied.length; i++) {
+        const record = applied[i]!;
         try {
-          const migrationFile = await this.loader.getMigration(record.version);
+          const migrationFile = migrationByVersion.get(record.version);
 
           if (!migrationFile) {
             throw new Error(`Migration file not found for version ${record.version}`);
@@ -211,7 +230,11 @@ export class MigrationRunner {
           const context = this.createContext();
           await migrationFile.migration.down(context);
 
-          await this.tracker.markAsRolledBack(migrationFile.version);
+          // After rolling this one back, the new CURRENT is whatever applied
+          // version sits one slot deeper in `allApplied`. If we've consumed
+          // the whole list, fall back to v0000 (no schema applied).
+          const previousVersion = allApplied[i + 1]?.version ?? 'v0000';
+          await this.tracker.markAsRolledBack(migrationFile.version, previousVersion);
 
           console.log(`✅ Rolled back ${migrationFile.version}: ${migrationFile.name}\n`);
           rolledBack.push(migrationFile);
