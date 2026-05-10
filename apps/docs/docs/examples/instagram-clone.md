@@ -998,7 +998,7 @@ async function createPhotoSafely(username: string, url: string, caption?: string
 ## Testing
 
 ```typescript
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll } from '@jest/globals';
 
 describe('Instagram Clone', () => {
   beforeAll(async () => {

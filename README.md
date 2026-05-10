@@ -37,15 +37,15 @@ const schema = {
   version: '1.0.0',
 
   indexes: {
-    primary: { hash: 'pk', sort: 'sk' },
-    gs1: { hash: 'gsi1pk', sort: 'gsi1sk' },
+    primary: { hash: 'PK', sort: 'SK' },
+    gsi1: { hash: 'GSI1PK', sort: 'GSI1SK' },
   },
 
   models: {
     User: {
       key: {
-        pk: { type: String, value: 'USER#${username}' },
-        sk: { type: String, value: 'USER#${username}' },
+        PK: { type: String, value: 'USER#${username}' },
+        SK: { type: String, value: 'USER#${username}' },
       },
       attributes: {
         username: { type: String, required: true },
@@ -168,12 +168,14 @@ This is a Turborepo monorepo with the following structure:
 ```
 dynatable/
 ├── apps/
-│   ├── crud/          # Example CRUD application
-│   └── docs/          # Docusaurus documentation site
+│   ├── crud/                  # Example CRUD application
+│   ├── docs/                  # Docusaurus documentation site
+│   └── migrations-playground/ # Sandbox for migration scenarios
 ├── packages/
-│   ├── core/          # Main Dynatable library
-│   ├── eslint-config/ # Shared ESLint configuration
-│   └── typescript-config/ # Shared TypeScript configuration
+│   ├── core/                  # Main Dynatable library
+│   ├── migrations/            # DynamoDB migration CLI
+│   ├── eslint-config/         # Shared ESLint configuration
+│   └── typescript-config/     # Shared TypeScript configuration
 ```
 
 ### Packages
@@ -187,12 +189,13 @@ dynatable/
 
 - **`crud`** - Example CRUD application demonstrating Dynatable usage
 - **`docs`** - Docusaurus documentation site with examples and guides
+- **`migrations-playground`** - Sandbox app for exercising the migrations CLI
 
 ## 🔧 Development
 
 ### Prerequisites
 
-- Node.js >= 18
+- Node.js >= 22
 - Yarn 1.22.22
 
 ### Setup
@@ -350,7 +353,7 @@ yarn test
 Example test:
 
 ```typescript
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect } from '@jest/globals';
 
 describe('User operations', () => {
   it('should create a user', async () => {
@@ -387,12 +390,12 @@ const user = await table.entities.User.put({
   name: 'Alice',
 }).execute();
 
-console.log(user.createdAt); // ISO 8601: 2025-01-15T10:30:00.000Z
-console.log(user.updatedAt); // ISO 8601: 2025-01-15T10:30:00.000Z
+console.log(user.createdAt); // ISO 8601 string: '2025-01-15T10:30:00.000Z'
+console.log(user.updatedAt); // ISO 8601 string: '2025-01-15T10:30:00.000Z'
 
-// Update automatically updates updatedAt
+// Update automatically refreshes updatedAt
 await table.entities.User.update({ username: 'alice' }).set('name', 'Alice Smith').execute();
-// updatedAt is now: 2025-01-15T10:35:00.000Z
+// updatedAt is now: '2025-01-15T10:35:00.000Z'
 ```
 
 ### Conditional Operations
@@ -434,12 +437,18 @@ await table.entities.User.batchWrite([
 
 ### GSI (Global Secondary Index) Support
 
+When your model defines GSI key templates, query a GSI by referencing your
+business attributes — Dynatable resolves them to the GSI keys automatically:
+
 ```typescript
-// Query using GSI
+// Schema:
+//   models.Post.index = {
+//     GSI1PK: { type: String, value: 'STATUS#${status}' },
+//     GSI1SK: { type: String, value: 'POST#${postId}' },
+//   }
+
 const publishedPosts = await table.entities.Post.query()
-  .where((attr, op) =>
-    op.and(op.eq(attr.gsi1pk, 'POST'), op.beginsWith(attr.gsi1sk, 'STATUS#true'))
-  )
+  .where((attr, op) => op.eq(attr.status, 'published'))
   .useIndex('gsi1')
   .execute();
 ```
@@ -449,7 +458,7 @@ const publishedPosts = await table.entities.Post.query()
 ```typescript
 // Scan entire table with filter
 const activeUsers = await table.entities.User.scan()
-  .where((attr, op) => op.gt(attr.followerCount, 1000))
+  .filter((attr, op) => op.gt(attr.followerCount, 1000))
   .limit(50)
   .execute();
 
@@ -475,7 +484,7 @@ const users = await table.entities.User.query()
 
 // IN operator
 const users = await table.entities.User.scan()
-  .where((attr, op) => op.in(attr.status, ['active', 'pending', 'verified']))
+  .filter((attr, op) => op.in(attr.status, ['active', 'pending', 'verified']))
   .execute();
 
 // Size function (for strings, sets, lists, maps)
@@ -490,7 +499,7 @@ const posts = await table.entities.Post.query()
 
 // Attribute type checking
 await table.entities.User.scan()
-  .where((attr, op) => op.attributeType(attr.metadata, 'M')) // Type is Map
+  .filter((attr, op) => op.attributeType(attr.metadata, 'M')) // Type is Map
   .execute();
 ```
 
@@ -543,16 +552,14 @@ const cleanKeysMiddleware = {
 Atomic reads across multiple items:
 
 ```typescript
-// Read multiple items atomically
-const result = await table
+// Read multiple items atomically — execute() resolves to a flat array
+// of items in the same order as the addGet() calls.
+const [user, photo, like] = await table
   .transactGet()
   .addGet(table.entities.User.get({ username: 'alice' }).dbParams())
   .addGet(table.entities.Photo.get({ username: 'alice', photoId: 'photo1' }).dbParams())
   .addGet(table.entities.Like.get({ photoId: 'photo1', likingUsername: 'bob' }).dbParams())
   .execute();
-
-// result.items contains all items or transaction fails
-const [user, photo, like] = result.items;
 ```
 
 ## 📚 Complete API Reference
@@ -807,18 +814,19 @@ const schema = {
 ### Type Inference
 
 ```typescript
-// Infer model type (includes timestamps if enabled)
-type User = InferModel<typeof schema.models.User>;
+// Preferred: schema-driven inference (honors params.timestamps —
+// includes createdAt/updatedAt automatically when enabled)
+type User = InferModelFromSchema<typeof schema, 'User'>;
+type UserInput = InferInputFromSchema<typeof schema, 'User'>;
 
-// Infer input type (excludes generated fields and timestamps)
-type UserInput = InferInput<typeof schema.models.User>;
+// Low-level alternatives that take a ModelDefinition directly.
+// Use these only when you don't have the surrounding schema in scope
+// (e.g. utilities that consume models). They do NOT see params.timestamps.
+type UserModel = InferModel<typeof schema.models.User>;
+type UserInputRaw = InferInput<typeof schema.models.User>;
 
 // Infer key input type (only key template variables)
 type UserKey = InferKeyInput<typeof schema.models.User>;
-
-// Infer from full schema by name
-type UserFromSchema = InferModelFromSchema<typeof schema, 'User'>;
-type UserInputFromSchema = InferInputFromSchema<typeof schema, 'User'>;
 ```
 
 ## 🤝 Contributing

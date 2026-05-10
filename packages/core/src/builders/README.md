@@ -62,7 +62,9 @@ const item = await getBuilder.execute();
 ```typescript
 import { createPutBuilder } from './builders';
 
-const putBuilder = createPutBuilder(tableName, item, client).ifNotExists().returning('ALL_NEW');
+// PutBuilder.returning accepts 'NONE' (default) or 'ALL_OLD'.
+// 'ALL_NEW'/'UPDATED_*' are valid only on UpdateBuilder.
+const putBuilder = createPutBuilder(tableName, item, client).ifNotExists().returning('ALL_OLD');
 
 const result = await putBuilder.execute();
 ```

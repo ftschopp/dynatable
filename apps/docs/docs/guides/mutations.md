@@ -26,8 +26,8 @@ console.log(user);
 //   name: 'Alice Smith',
 //   email: 'alice@example.com',
 //   bio: 'Software engineer',
-//   createdAt: 2024-01-15T10:00:00.000Z,
-//   updatedAt: 2024-01-15T10:00:00.000Z
+//   createdAt: '2024-01-15T10:00:00.000Z', // ISO 8601 string
+//   updatedAt: '2024-01-15T10:00:00.000Z',
 // }
 ```
 
@@ -333,12 +333,15 @@ await table.entities.User.batchWrite([
 For deletes or for mixing puts and deletes atomically, use a transaction (see below). DynamoDB's native `BatchWriteItem` does not support condition expressions and cannot be combined with conditional checks — if you need atomicity or conditions, use `transactWrite()`.
 
 :::note
-Batch operations:
+`entities.X.batchWrite()` (DynamoDB BatchWriteItem):
 
-- Max 25 items per request
-- Max 16 MB total data
-- Puts only via `entities.X.batchWrite()` (no conditional operations)
-- Partial failures possible
+- Max 25 items per chunk; the builder chunks larger arrays automatically
+- Max 16 MB total per chunk
+- Puts only via `entities.X.batchWrite()` (no conditional expressions)
+- Unprocessed items are retried with exponential backoff; remaining failures
+  surface as `BatchUnprocessedError`
+
+For reads, `entities.X.batchGet()` allows up to 100 keys per chunk.
   :::
 
 ## Transactions

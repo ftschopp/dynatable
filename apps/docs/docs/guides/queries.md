@@ -33,7 +33,7 @@ Full table scan, examines every item:
 ```typescript
 // ⚠️ Slow - scans entire table
 const activeUsers = await table.entities.User.scan()
-  .where((attr, op) => op.eq(attr.isActive, true))
+  .filter((attr, op) => op.eq(attr.isActive, true))
   .execute();
 ```
 
@@ -121,22 +121,26 @@ const posts = await table.entities.Post.query()
 
 ### Comparison Operators
 
+When `params.timestamps: true` is enabled, `createdAt`/`updatedAt` are stored
+as ISO 8601 strings. Compare them as strings — DynamoDB's lexicographic order
+matches chronological order for ISO 8601:
+
 ```typescript
-// Greater than
+// Greater than (compare ISO strings)
 const recentPosts = await table.entities.Post.query()
   .where((attr, op) =>
-    op.and(op.eq(attr.username, 'alice'), op.gt(attr.createdAt, new Date('2024-01-01')))
+    op.and(op.eq(attr.username, 'alice'), op.gt(attr.createdAt, '2024-01-01T00:00:00.000Z'))
   )
   .execute();
 
 // Less than
 const oldPosts = await table.entities.Post.query()
   .where((attr, op) =>
-    op.and(op.eq(attr.username, 'alice'), op.lt(attr.createdAt, new Date('2023-01-01')))
+    op.and(op.eq(attr.username, 'alice'), op.lt(attr.createdAt, '2023-01-01T00:00:00.000Z'))
   )
   .execute();
 
-// Greater than or equal
+// Greater than or equal — numeric attributes
 const posts = await table.entities.Post.query()
   .where((attr, op) => op.and(op.eq(attr.username, 'alice'), op.gte(attr.views, 100)))
   .execute();
@@ -157,15 +161,26 @@ const posts = await table.entities.Post.query()
 
 ### Begins With
 
-Useful for hierarchical data:
+Useful for hierarchical sort-key patterns. Reference the attribute that drives
+the sort-key template (Dynatable resolves it to the actual `SK` for the query):
 
 ```typescript
-// All posts (sort key starts with POST#)
+// Schema:
+//   models.Post.key.SK = { type: String, value: 'POST#${postId}' }
+//
+// `beginsWith` on `postId` truncates the template at the next placeholder
+// — the resulting key prefix is "POST#"
 const posts = await table.entities.Post.query()
-  .where((attr, op) => op.and(op.eq(attr.username, 'alice'), op.beginsWith(attr.sk, 'POST#')))
+  .where((attr, op) => op.and(op.eq(attr.username, 'alice'), op.beginsWith(attr.postId, '')))
   .execute();
+```
 
-// Posts from January 2024
+For temporal filters on a non-key attribute (such as `createdAt`), use a
+`FilterExpression` — note that filters run after the key match and do NOT
+reduce read capacity:
+
+```typescript
+// Posts from January 2024 (filter, not key condition)
 const janPosts = await table.entities.Post.query()
   .where((attr, op) =>
     op.and(op.eq(attr.username, 'alice'), op.beginsWith(attr.createdAt, '2024-01'))
@@ -175,16 +190,19 @@ const janPosts = await table.entities.Post.query()
 
 ### Contains
 
-Check if an attribute contains a substring:
+Check if an attribute contains a substring (or item, for sets/lists):
 
 ```typescript
 const posts = await table.entities.Post.scan()
-  .where((attr, op) => op.contains(attr.content, 'typescript'))
+  .filter((attr, op) => op.contains(attr.content, 'typescript'))
   .execute();
 ```
 
 :::note
-`contains` only works with Scan, not Query.
+`contains` cannot be used as a key condition — DynamoDB only allows `=`,
+`<`/`<=`/`>`/`>=`, `between`, and `begins_with` on key attributes. It works
+fine as a filter on either Query (via `.where(...)`) or Scan (via
+`.filter(...)`).
 :::
 
 ## Logical Operators
@@ -207,7 +225,7 @@ Match any condition:
 
 ```typescript
 const posts = await table.entities.Post.scan()
-  .where((attr, op) => op.or(op.eq(attr.status, 'published'), op.eq(attr.status, 'featured')))
+  .filter((attr, op) => op.or(op.eq(attr.status, 'published'), op.eq(attr.status, 'featured')))
   .execute();
 ```
 
@@ -217,7 +235,7 @@ Negate a condition:
 
 ```typescript
 const posts = await table.entities.Post.scan()
-  .where((attr, op) => op.not(op.eq(attr.published, false)))
+  .filter((attr, op) => op.not(op.eq(attr.published, false)))
   .execute();
 ```
 
@@ -229,7 +247,7 @@ const posts = await table.entities.Post.query()
     op.and(
       op.eq(attr.username, 'alice'),
       op.or(op.eq(attr.published, true), op.exists(attr.featured)),
-      op.gt(attr.createdAt, new Date('2024-01-01'))
+      op.gt(attr.createdAt, '2024-01-01T00:00:00.000Z')
     )
   )
   .execute();
@@ -243,7 +261,7 @@ Check if an attribute exists:
 
 ```typescript
 const postsWithImages = await table.entities.Post.scan()
-  .where((attr, op) => op.exists(attr.imageUrl))
+  .filter((attr, op) => op.exists(attr.imageUrl))
   .execute();
 ```
 
@@ -253,7 +271,7 @@ Check if an attribute doesn't exist:
 
 ```typescript
 const postsWithoutImages = await table.entities.Post.scan()
-  .where((attr, op) => op.notExists(attr.imageUrl))
+  .filter((attr, op) => op.notExists(attr.imageUrl))
   .execute();
 ```
 
@@ -263,7 +281,7 @@ Check if value is in a list:
 
 ```typescript
 const posts = await table.entities.Post.scan()
-  .where((attr, op) => op.in(attr.status, ['draft', 'review', 'published']))
+  .filter((attr, op) => op.in(attr.status, ['draft', 'review', 'published']))
   .execute();
 ```
 
@@ -395,11 +413,13 @@ When your model defines index key templates, you can query a GSI using your mode
 // ✅ Use attribute names — Dynatable resolves them to GSI keys automatically
 const user = await table.entities.User.query()
   .where((attr, op) => op.eq(attr.email, 'alice@example.com'))
-  .useIndex('GSI1')
+  .useIndex('gsi1')
   .execute();
 ```
 
-You can also use raw GSI key names with pre-formatted values if you prefer:
+You can also use raw GSI key names with pre-formatted values if you prefer.
+The string passed to `useIndex` must match the key in `schema.indexes`
+exactly (case-sensitive):
 
 ```typescript
 const publishedPosts = await table.entities.Post.query()
@@ -427,7 +447,7 @@ const resources = await table.entities.AirportResource.query()
   .where((attr, op) =>
     op.and(op.eq(attr.airport, 'EZE'), op.beginsWith(attr.category, 'GPU'))
   )
-  .useIndex('GSI1')
+  .useIndex('gsi1')
   .execute();
 ```
 
@@ -482,7 +502,7 @@ const allUsers = await table.entities.User.scan().execute();
 
 ```typescript
 const activeUsers = await table.entities.User.scan()
-  .where((attr, op) => op.eq(attr.isActive, true))
+  .filter((attr, op) => op.eq(attr.isActive, true))
   .execute();
 ```
 
@@ -528,7 +548,7 @@ const posts = await table.entities.Post.query()
   .where((attr, op) =>
     op.and(
       op.eq(attr.username, 'alice'),
-      op.between(attr.createdAt, new Date('2024-01-01'), new Date('2024-12-31'))
+      op.between(attr.createdAt, '2024-01-01T00:00:00.000Z', '2024-12-31T23:59:59.999Z')
     )
   )
   .execute();
@@ -570,7 +590,7 @@ const posts = await table.entities.Post.query()
 
 // ❌ Slow - full table scan
 const posts = await table.entities.Post.scan()
-  .where((attr, op) => op.eq(attr.username, 'alice'))
+  .filter((attr, op) => op.eq(attr.username, 'alice'))
   .execute();
 ```
 
@@ -623,7 +643,7 @@ const posts = await table.entities.Post.query()
 
 // ❌ Scan because no index
 const posts = await table.entities.Post.scan()
-  .where((attr, op) => op.eq(attr.published, true))
+  .filter((attr, op) => op.eq(attr.published, true))
   .execute();
 ```
 

@@ -8,7 +8,7 @@ Get started with Dynatable in minutes.
 
 ## Prerequisites
 
-- **Node.js**: Version 16 or higher
+- **Node.js**: Version 22 or higher
 - **TypeScript**: Version 5.0 or higher (recommended)
 - **AWS Account**: For DynamoDB access
 
