@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-core [1.6.1](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.6.0...@ftschopp/dynatable-core@1.6.1) (2026-05-10)
+
+
+### Bug Fixes
+
+* **core:** preserve concrete builder type through where(), unblock IDE typecheck on tests ([#45](https://github.com/ftschopp/dynatable/issues/45)) ([fb98553](https://github.com/ftschopp/dynatable/commit/fb98553684943291f6d500200bb4b7d32e2fa613))
+
 # @ftschopp/dynatable-core [1.6.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.5.2...@ftschopp/dynatable-core@1.6.0) (2026-05-10)
 
 
