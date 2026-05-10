@@ -618,6 +618,185 @@ describe('UpdateBuilder', () => {
       expect(valueKeys.length).toBeGreaterThanOrEqual(1);
     });
 
+    describe('Primary-key template guard', () => {
+      // PK = 'PERSON#${id}', SK = 'PROFILE'
+      // Updating `id` would silently leave the row's PK at the old value
+      // while writing the new id as an attribute — we reject before send.
+
+      test('rejects .set(field, val) on a primary-key template var', () => {
+        const builder = createUpdateBuilder<PersonnelModel>(
+          tableName,
+          { id: '1' } as Partial<PersonnelModel>,
+          client,
+          [],
+          { set: [], remove: [], add: [], delete: [] },
+          'NONE',
+          0,
+          false,
+          undefined,
+          { model: personnelModel as any, keyVars: { id: '1' } }
+        ).set('id', '2');
+
+        expect(() => builder.dbParams()).toThrow(/primary key template/i);
+        expect(() => builder.dbParams()).toThrow(/\[id\]/);
+      });
+
+      test('rejects .set({ ... }) object form when it contains a primary-key template var', () => {
+        // The object overload populates setInputs the same way as the
+        // single-field form, so the guard must fire here too.
+        const builder = createUpdateBuilder<PersonnelModel>(
+          tableName,
+          { id: '1' } as Partial<PersonnelModel>,
+          client,
+          [],
+          { set: [], remove: [], add: [], delete: [] },
+          'NONE',
+          0,
+          false,
+          undefined,
+          { model: personnelModel as any, keyVars: { id: '1' } }
+        ).set({ id: '2', role: 'pilot' });
+
+        expect(() => builder.dbParams()).toThrow(/primary key template/i);
+        expect(() => builder.dbParams()).toThrow(/\[id\]/);
+      });
+
+      test('rejects .remove() of a primary-key template var', () => {
+        const builder = createUpdateBuilder<PersonnelModel>(
+          tableName,
+          { id: '1' } as Partial<PersonnelModel>,
+          client,
+          [],
+          { set: [], remove: [], add: [], delete: [] },
+          'NONE',
+          0,
+          false,
+          undefined,
+          { model: personnelModel as any, keyVars: { id: '1' } }
+        ).remove('id');
+
+        expect(() => builder.dbParams()).toThrow(/primary key template/i);
+      });
+
+      test('rejects .add() of a primary-key template var', () => {
+        const builder = createUpdateBuilder<PersonnelModel>(
+          tableName,
+          { id: '1' } as Partial<PersonnelModel>,
+          client,
+          [],
+          { set: [], remove: [], add: [], delete: [] },
+          'NONE',
+          0,
+          false,
+          undefined,
+          { model: personnelModel as any, keyVars: { id: '1' } }
+        ).add('id' as any, 1);
+
+        expect(() => builder.dbParams()).toThrow(/primary key template/i);
+      });
+
+      test('still allows updates that touch unrelated attributes', () => {
+        // Sanity check: the guard only fires on PK template vars.
+        const params = createUpdateBuilder<PersonnelModel>(
+          tableName,
+          { id: '1' } as Partial<PersonnelModel>,
+          client,
+          [],
+          { set: [], remove: [], add: [], delete: [] },
+          'NONE',
+          0,
+          false,
+          undefined,
+          { model: personnelModel as any, keyVars: { id: '1' } }
+        )
+          .set({ firstName: 'Ada', lastName: 'Lovelace' })
+          .dbParams();
+
+        expect(params.UpdateExpression).toContain('#firstName');
+        expect(params.UpdateExpression).toContain('#lastName');
+      });
+    });
+
+    describe('Secondary-index template guard for non-set ops', () => {
+      // GSI1PK depends on airportId. .add()/.remove()/.delete() can't
+      // expose a new value to the recompute path, so we reject and
+      // require the caller to switch to .set(field, newValue).
+
+      test('rejects .remove() of a field used in a GSI template', () => {
+        const builder = createUpdateBuilder<PersonnelModel>(
+          tableName,
+          { id: '1' } as Partial<PersonnelModel>,
+          client,
+          [],
+          { set: [], remove: [], add: [], delete: [] },
+          'NONE',
+          0,
+          false,
+          undefined,
+          { model: personnelModel as any, keyVars: { id: '1' } }
+        ).remove('airportId');
+
+        expect(() => builder.dbParams()).toThrow(/secondary-index template/i);
+        expect(() => builder.dbParams()).toThrow(/\[airportId\]/);
+        expect(() => builder.dbParams()).toThrow(/\.set\(/);
+      });
+
+      test('rejects .add() of a field used in a GSI template', () => {
+        const builder = createUpdateBuilder<PersonnelModel>(
+          tableName,
+          { id: '1' } as Partial<PersonnelModel>,
+          client,
+          [],
+          { set: [], remove: [], add: [], delete: [] },
+          'NONE',
+          0,
+          false,
+          undefined,
+          { model: personnelModel as any, keyVars: { id: '1' } }
+        ).add('airportId' as any, 1);
+
+        expect(() => builder.dbParams()).toThrow(/secondary-index template/i);
+      });
+
+      test('rejects .delete() of a field used in a GSI template', () => {
+        const builder = createUpdateBuilder<PersonnelModel>(
+          tableName,
+          { id: '1' } as Partial<PersonnelModel>,
+          client,
+          [],
+          { set: [], remove: [], add: [], delete: [] },
+          'NONE',
+          0,
+          false,
+          undefined,
+          { model: personnelModel as any, keyVars: { id: '1' } }
+        ).delete('airportId' as any, new Set(['EZE']));
+
+        expect(() => builder.dbParams()).toThrow(/secondary-index template/i);
+      });
+
+      test('still allows .add()/.remove()/.delete() on unrelated fields', () => {
+        const params = createUpdateBuilder<PersonnelModel>(
+          tableName,
+          { id: '1' } as Partial<PersonnelModel>,
+          client,
+          [],
+          { set: [], remove: [], add: [], delete: [] },
+          'NONE',
+          0,
+          false,
+          undefined,
+          { model: personnelModel as any, keyVars: { id: '1' } }
+        )
+          .add('role' as any, 1)
+          .remove('role')
+          .dbParams();
+
+        expect(params.UpdateExpression).toContain('ADD #role');
+        expect(params.UpdateExpression).toContain('REMOVE #role');
+      });
+    });
+
     test('does not throw when the user .set()s an unrelated index key that auto-recompute is NOT touching', () => {
       // GSI1PK only depends on airportId. User sets GSI1SK explicitly,
       // and only updates `role` (not in any index template) — no
