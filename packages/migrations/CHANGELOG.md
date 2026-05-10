@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-migrations [1.3.1](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.3.0...@ftschopp/dynatable-migrations@1.3.1) (2026-05-10)
+
+
+### Performance Improvements
+
+* **migrations:** cache migration loader and avoid per-step rollback queries ([#43](https://github.com/ftschopp/dynatable/issues/43)) ([38724ef](https://github.com/ftschopp/dynatable/commit/38724efaf8b6c0b52696d4c55a3b9b2c47cc745c))
+
 # @ftschopp/dynatable-migrations [1.3.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.2.6...@ftschopp/dynatable-migrations@1.3.0) (2026-05-09)
 
 
