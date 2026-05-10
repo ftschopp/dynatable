@@ -79,7 +79,11 @@ describe('DynamoDBMigrationTracker - refreshLock', () => {
     const input = updates[0]!.args[0].input as any;
     expect(input.ConditionExpression).toBe('lockId = :lockId');
     expect(typeof input.ExpressionAttributeValues[':lockId']).toBe('string');
-    expect(typeof input.ExpressionAttributeValues[':exp']).toBe('number');
+    // expiresAt is now stored as an ISO 8601 string for consistency with
+    // every other timestamp in the tracker (acquiredAt/appliedAt/etc.).
+    const exp = input.ExpressionAttributeValues[':exp'];
+    expect(typeof exp).toBe('string');
+    expect(exp).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/);
   });
 
   test('throws when the lockId no longer matches (lost race)', async () => {

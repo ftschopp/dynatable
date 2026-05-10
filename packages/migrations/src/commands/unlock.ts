@@ -45,7 +45,7 @@ export async function forceUnlock(config: MigrationConfig, yes: boolean = false)
   console.log(`\n⚠️  Force-unlock will delete the migration lock on "${config.tableName}":`);
   console.log(`   lockId:     ${lockId}`);
   console.log(`   acquiredAt: ${acquiredAt}`);
-  console.log(`   expiresAt:  ${expiresAt} (epoch ms)`);
+  console.log(`   expiresAt:  ${expiresAt}`);
   console.log('\n   Only run this if you are certain the lock owner is no longer running.');
 
   if (!yes) {

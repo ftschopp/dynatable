@@ -94,11 +94,24 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
   }
 
   /**
-   * Acquire a distributed lock to prevent concurrent migrations
+   * Acquire a distributed lock to prevent concurrent migrations.
+   *
+   * `expiresAt` is stored as an ISO 8601 string for consistency with every
+   * other timestamp in the tracker (`appliedAt`, `updatedAt`, `failedAt`,
+   * `rolledBackAt`, `acquiredAt`). ISO 8601 is lexicographically ordered the
+   * same way it's chronologically ordered, so the `<=` condition still
+   * compares correctly.
+   *
+   * **Upgrade note:** earlier versions stored `expiresAt` as a number
+   * (millis). A stale numeric lock written by an older client cannot be
+   * compared against the new ISO `:now` value (DynamoDB rejects mixed-type
+   * comparisons), so an in-flight numeric lock will block new acquisitions
+   * until cleared via `dynatable-migrate unlock --force`.
    */
   async acquireLock(): Promise<boolean> {
     const now = Date.now();
-    const expiresAt = now + this.lockTtlSeconds * 1000;
+    const nowIso = new Date(now).toISOString();
+    const expiresAtIso = new Date(now + this.lockTtlSeconds * 1000).toISOString();
     this.lockId = `lock-${now}-${Math.random().toString(36).substring(7)}`;
 
     try {
@@ -108,14 +121,14 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
           Item: {
             ...this.lockKey,
             lockId: this.lockId,
-            acquiredAt: new Date().toISOString(),
-            expiresAt,
+            acquiredAt: nowIso,
+            expiresAt: expiresAtIso,
           },
           // Only succeed if lock doesn't exist or has expired. The `<=`
           // covers the boundary where two clocks read the exact ms.
           ConditionExpression: 'attribute_not_exists(PK) OR expiresAt <= :now',
           ExpressionAttributeValues: {
-            ':now': now,
+            ':now': nowIso,
           },
         })
       );
@@ -138,7 +151,7 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
   async refreshLock(): Promise<void> {
     if (!this.lockId) return;
 
-    const newExpiresAt = Date.now() + this.lockTtlSeconds * 1000;
+    const newExpiresAtIso = new Date(Date.now() + this.lockTtlSeconds * 1000).toISOString();
 
     await this.client.send(
       new UpdateCommand({
@@ -147,7 +160,7 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
         UpdateExpression: 'SET expiresAt = :exp',
         ConditionExpression: 'lockId = :lockId',
         ExpressionAttributeValues: {
-          ':exp': newExpiresAt,
+          ':exp': newExpiresAtIso,
           ':lockId': this.lockId,
         },
       })
