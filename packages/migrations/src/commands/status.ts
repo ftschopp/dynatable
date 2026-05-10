@@ -1,10 +1,10 @@
-import { MigrationRunner } from '../core/runner';
+import { createMigrationRunner } from '../core/runner';
 import { createDynamoDBClient } from '../core/client';
 import { MigrationConfig } from '../types';
 
 export async function showStatus(config: MigrationConfig): Promise<void> {
   const client = createDynamoDBClient(config);
-  const runner = new MigrationRunner(client, config);
+  const runner = createMigrationRunner(client, config);
 
   try {
     const statuses = await runner.status();
@@ -20,11 +20,14 @@ export async function showStatus(config: MigrationConfig): Promise<void> {
       return;
     }
 
-    // Group by status
-    const pending = statuses.filter((s) => s.status === 'pending');
-    const applied = statuses.filter((s) => s.status === 'applied');
-    const failed = statuses.filter((s) => s.status === 'failed');
-    const rolledBack = statuses.filter((s) => s.status === 'rolled_back');
+    const grouped = statuses.reduce<Record<string, typeof statuses>>((acc, s) => {
+      (acc[s.status] ??= []).push(s);
+      return acc;
+    }, {});
+    const pending = grouped.pending ?? [];
+    const applied = grouped.applied ?? [];
+    const failed = grouped.failed ?? [];
+    const rolledBack = grouped.rolled_back ?? [];
 
     // Show applied migrations
     if (applied.length > 0) {
@@ -68,8 +71,9 @@ export async function showStatus(config: MigrationConfig): Promise<void> {
 
     // Summary
     console.log(`Total: ${statuses.length} migration(s)\n`);
-  } catch (error: any) {
-    console.error(`\n❌ Failed to get status: ${error.message}\n`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`\n❌ Failed to get status: ${message}\n`);
     process.exit(1);
   }
 }

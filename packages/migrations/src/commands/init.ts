@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { ConfigLoader } from '../core/config';
+import { createDefaultConfig } from '../core/config';
 
 export async function initProject(): Promise<void> {
   const cwd = process.cwd();
@@ -22,7 +22,7 @@ export async function initProject(): Promise<void> {
   // Create config file
   const configPath = path.join(cwd, 'dynatable.config.js');
   if (!fs.existsSync(configPath)) {
-    ConfigLoader.createDefaultConfig(configPath);
+    createDefaultConfig(configPath);
   } else {
     console.log(`⚠️  Config already exists: ${configPath}`);
   }

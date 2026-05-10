@@ -1,6 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
-import { MigrationLoader } from '../core/loader';
+import { createMigrationLoader, MigrationLoaderHandle } from '../core/loader';
 import { generateMigrationTemplate } from '../templates/migration';
 
 type VersionBumpType = 'major' | 'minor' | 'patch';
@@ -8,7 +8,10 @@ type VersionBumpType = 'major' | 'minor' | 'patch';
 /**
  * Get next version based on bump type
  */
-async function getNextVersion(loader: MigrationLoader, bumpType: VersionBumpType): Promise<string> {
+async function getNextVersion(
+  loader: MigrationLoaderHandle,
+  bumpType: VersionBumpType
+): Promise<string> {
   const migrations = await loader.loadMigrations();
 
   const lastMigration = migrations.length > 0 ? migrations[migrations.length - 1] : null;
@@ -57,7 +60,7 @@ export async function createMigration(
   }
 
   // Generate version
-  const loader = new MigrationLoader(migrationsDir);
+  const loader = createMigrationLoader(migrationsDir);
   let version: string;
 
   if (explicitVersion) {

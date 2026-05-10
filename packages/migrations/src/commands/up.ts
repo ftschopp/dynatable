@@ -1,4 +1,4 @@
-import { MigrationRunner } from '../core/runner';
+import { createMigrationRunner } from '../core/runner';
 import { createDynamoDBClient } from '../core/client';
 import { MigrationConfig } from '../types';
 
@@ -8,7 +8,7 @@ export async function runMigrations(
   dryRun: boolean = false
 ): Promise<void> {
   const client = createDynamoDBClient(config);
-  const runner = new MigrationRunner(client, config);
+  const runner = createMigrationRunner(client, config);
 
   try {
     const executed = await runner.up({ limit, dryRun });
@@ -19,8 +19,9 @@ export async function runMigrations(
       const currentVersion = await runner.getCurrentVersion();
       console.log(`📌 Current version: ${currentVersion}\n`);
     }
-  } catch (error: any) {
-    console.error(`\n❌ Migration failed: ${error.message}\n`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`\n❌ Migration failed: ${message}\n`);
     process.exit(1);
   }
 }

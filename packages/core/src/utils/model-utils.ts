@@ -47,16 +47,13 @@ export const resolveKeys = <M extends ModelDefinition>(
   input: Record<string, any>,
   type: 'key' | 'index' | 'both' = 'key'
 ): Record<string, string> => {
-  const out: Record<string, string> = {};
-  const process = (keys?: Record<string, KeyDefinition>) => {
-    if (!keys) return;
-    for (const [k, def] of Object.entries(keys)) {
-      out[k] = resolveTemplate(def.value, input);
-    }
-  };
-  if (type === 'key' || type === 'both') process(model.key);
-  if (type === 'index' || type === 'both') process(model.index);
-  return out;
+  const resolve = (keys?: Record<string, KeyDefinition>): [string, string][] =>
+    keys ? Object.entries(keys).map(([k, def]) => [k, resolveTemplate(def.value, input)]) : [];
+
+  return Object.fromEntries([
+    ...(type === 'key' || type === 'both' ? resolve(model.key) : []),
+    ...(type === 'index' || type === 'both' ? resolve(model.index) : []),
+  ]);
 };
 
 /**

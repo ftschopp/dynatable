@@ -823,9 +823,10 @@ async function getUserFeed(username: string, limit: number = 30) {
 
   const photosByUser = await Promise.all(photoPromises);
 
-  // 3. Combine and sort by date
-  const allPhotos = photosByUser.flat();
-  allPhotos.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  // 3. Combine and sort by date (toSorted returns a fresh array, leaving inputs untouched)
+  const allPhotos = photosByUser
+    .flat()
+    .toSorted((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   // 4. Return first N photos
   return allPhotos.slice(0, limit);
@@ -902,23 +903,17 @@ if (profile) {
 
 ```typescript
 async function searchUserPhotos(username: string, minLikes?: number, minComments?: number) {
-  let query = table.entities.Photo.query()
+  return await table.entities.Photo.query()
     .where((attr, op) => {
-      const conditions = [op.eq(attr.username, username)];
-
-      if (minLikes !== undefined) {
-        conditions.push(op.gt(attr.likesCount, minLikes));
-      }
-
-      if (minComments !== undefined) {
-        conditions.push(op.gt(attr.commentCount, minComments));
-      }
-
-      return conditions.length > 1 ? op.and(...conditions) : conditions[0];
+      const conditions = [
+        op.eq(attr.username, username),
+        ...(minLikes !== undefined ? [op.gt(attr.likesCount, minLikes)] : []),
+        ...(minComments !== undefined ? [op.gt(attr.commentCount, minComments)] : []),
+      ];
+      return conditions.length > 1 ? op.and(...conditions) : conditions[0]!;
     })
-    .scanIndexForward(false);
-
-  return await query.execute();
+    .scanIndexForward(false)
+    .execute();
 }
 
 // Usage: Search photos with more than 100 likes
@@ -931,16 +926,12 @@ const popularPhotos = await searchUserPhotos('juanca', 100);
 
 ```typescript
 async function getUserPhotosPaginated(username: string, limit: number = 20, lastKey?: any) {
-  let query = table.entities.Photo.query()
+  const base = table.entities.Photo.query()
     .where((attr, op) => op.eq(attr.username, username))
     .limit(limit)
     .scanIndexForward(false);
 
-  if (lastKey) {
-    query = query.startFrom(lastKey);
-  }
-
-  return await query.executeWithPagination();
+  return await (lastKey ? base.startFrom(lastKey) : base).executeWithPagination();
 }
 
 // Usage - first page
@@ -958,16 +949,12 @@ if (page1.lastEvaluatedKey) {
 
 ```typescript
 async function getPhotoCommentsPaginated(photoId: string, limit: number = 20, lastKey?: any) {
-  let query = table.entities.Comment.query()
+  const base = table.entities.Comment.query()
     .where((attr, op) => op.eq(attr.photoId, photoId))
     .limit(limit)
     .scanIndexForward(true);
 
-  if (lastKey) {
-    query = query.startFrom(lastKey);
-  }
-
-  const result = await query.executeWithPagination();
+  const result = await (lastKey ? base.startFrom(lastKey) : base).executeWithPagination();
 
   // Get user details for this page
   if (result.items.length > 0) {

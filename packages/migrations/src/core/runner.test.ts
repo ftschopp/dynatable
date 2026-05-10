@@ -12,7 +12,7 @@ import {
   TransactWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
-import { MigrationRunner } from './runner';
+import { createMigrationRunner } from './runner';
 import type { MigrationConfig } from '../types';
 
 const baseConfig: MigrationConfig = {
@@ -22,10 +22,10 @@ const baseConfig: MigrationConfig = {
 
 function makeRunner(config: Partial<MigrationConfig> = {}) {
   const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: 'us-east-1' }));
-  return new MigrationRunner(client, { ...baseConfig, ...config });
+  return createMigrationRunner(client, { ...baseConfig, ...config });
 }
 
-describe('MigrationRunner.up - input validation', () => {
+describe('migrationRunner.up - input validation', () => {
   test('throws when limit is 0', async () => {
     await expect(makeRunner().up({ limit: 0 })).rejects.toThrow(/positive integer/);
   });
@@ -43,7 +43,7 @@ describe('MigrationRunner.up - input validation', () => {
   });
 });
 
-describe('MigrationRunner.down - input validation', () => {
+describe('migrationRunner.down - input validation', () => {
   test('throws when steps is 0', async () => {
     await expect(makeRunner().down(0)).rejects.toThrow(/positive integer/);
   });
@@ -89,7 +89,7 @@ const failingMigration = (version: string, name: string, message: string) => `mo
   down: async () => { throw new Error('${message}'); },
 };`;
 
-describe('MigrationRunner.up - happy path & failure handling', () => {
+describe('migrationRunner.up - happy path & failure handling', () => {
   let dir: string;
 
   beforeEach(() => {
@@ -228,7 +228,7 @@ describe('MigrationRunner.up - happy path & failure handling', () => {
   });
 });
 
-describe('MigrationRunner.down - happy path & failure handling', () => {
+describe('migrationRunner.down - happy path & failure handling', () => {
   let dir: string;
 
   beforeEach(() => {

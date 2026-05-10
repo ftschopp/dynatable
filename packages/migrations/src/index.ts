@@ -7,10 +7,14 @@
 export * from './types';
 
 // Core
-export { DynamoDBMigrationTracker } from './core/tracker';
-export { MigrationLoader } from './core/loader';
-export { MigrationRunner, type RunOptions } from './core/runner';
-export { ConfigLoader, loadConfig } from './core/config';
+export { createMigrationTracker, type MigrationTrackerHandle } from './core/tracker';
+export { createMigrationLoader, type MigrationLoaderHandle } from './core/loader';
+export {
+  createMigrationRunner,
+  type MigrationRunnerHandle,
+  type RunOptions,
+} from './core/runner';
+export { loadConfig, createDefaultConfig } from './core/config';
 export { createDynamoDBClient } from './core/client';
 export { MigrationAlreadyAppliedError, MigrationLockLostError } from './core/errors';
 

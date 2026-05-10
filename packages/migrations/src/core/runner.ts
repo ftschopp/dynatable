@@ -12,8 +12,8 @@ import {
   TransactGetCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { MigrationConfig, MigrationContext, MigrationFile, MigrationStatus } from '../types';
-import { DynamoDBMigrationTracker } from './tracker';
-import { MigrationLoader } from './loader';
+import { createMigrationTracker, MigrationTrackerHandle } from './tracker';
+import { createMigrationLoader, MigrationLoaderHandle } from './loader';
 import { compareSemver } from './semver';
 import { startLockHeartbeat } from './lock-heartbeat';
 
@@ -22,30 +22,79 @@ export interface RunOptions {
   dryRun?: boolean;
 }
 
-export class MigrationRunner {
-  private client: DynamoDBDocumentClient;
-  private config: MigrationConfig;
-  private tracker: DynamoDBMigrationTracker;
-  private loader: MigrationLoader;
+export interface MigrationRunnerHandle {
+  initialize(): Promise<void>;
+  up(options?: RunOptions): Promise<MigrationFile[]>;
+  down(steps?: number, dryRun?: boolean): Promise<MigrationFile[]>;
+  status(): Promise<MigrationStatus[]>;
+  getCurrentVersion(): Promise<string | null>;
+  reset(): Promise<void>;
+}
 
-  constructor(client: DynamoDBDocumentClient, config: MigrationConfig) {
-    this.client = client;
-    this.config = config;
-    this.tracker = new DynamoDBMigrationTracker(client, config);
-    this.loader = new MigrationLoader(config.migrationsDir || './migrations');
+const DYNAMODB_COMMANDS = {
+  ScanCommand,
+  QueryCommand,
+  GetCommand,
+  PutCommand,
+  UpdateCommand,
+  DeleteCommand,
+  BatchGetCommand,
+  BatchWriteCommand,
+  TransactWriteCommand,
+  TransactGetCommand,
+};
+
+const createContext = (
+  client: DynamoDBDocumentClient,
+  config: MigrationConfig,
+  tracker: MigrationTrackerHandle
+): MigrationContext => ({
+  client,
+  tableName: config.tableName,
+  tracker,
+  config,
+  dynamodb: DYNAMODB_COMMANDS,
+});
+
+/**
+ * Run the body under an exclusive migration lock with a refreshing heartbeat.
+ * Skipped entirely when `dryRun` is true so dry runs never need the lock.
+ */
+const withLock = async <T>(
+  tracker: MigrationTrackerHandle,
+  dryRun: boolean,
+  body: () => Promise<T>
+): Promise<T> => {
+  if (dryRun) return body();
+
+  const lockAcquired = await tracker.acquireLock();
+  if (!lockAcquired) {
+    throw new Error(
+      'Could not acquire migration lock. Another migration may be in progress. ' +
+        'If you believe this is an error, wait a few minutes and try again.'
+    );
   }
-
-  /**
-   * Initialize migration system
-   */
-  async initialize(): Promise<void> {
-    await this.tracker.initialize();
+  const stopHeartbeat = startLockHeartbeat(tracker, tracker.lockTtlSeconds);
+  try {
+    return await body();
+  } finally {
+    // Always stop the heartbeat and release the lock — in that order, so
+    // we don't refresh a lock we're about to delete.
+    stopHeartbeat();
+    await tracker.releaseLock();
   }
+};
 
-  /**
-   * Run all pending migrations
-   */
-  async up(options: RunOptions = {}): Promise<MigrationFile[]> {
+export const createMigrationRunner = (
+  client: DynamoDBDocumentClient,
+  config: MigrationConfig
+): MigrationRunnerHandle => {
+  const tracker = createMigrationTracker(client, config);
+  const loader = createMigrationLoader(config.migrationsDir || './migrations');
+
+  const initialize = (): Promise<void> => tracker.initialize();
+
+  const up = async (options: RunOptions = {}): Promise<MigrationFile[]> => {
     const { limit, dryRun = false } = options;
 
     if (limit !== undefined && (!Number.isInteger(limit) || limit <= 0)) {
@@ -54,216 +103,29 @@ export class MigrationRunner {
       );
     }
 
-    await this.initialize();
+    await initialize();
 
-    // Acquire lock unless dry run
-    let stopHeartbeat: (() => void) | undefined;
-    if (!dryRun) {
-      const lockAcquired = await this.tracker.acquireLock();
-      if (!lockAcquired) {
-        throw new Error(
-          'Could not acquire migration lock. Another migration may be in progress. ' +
-            'If you believe this is an error, wait a few minutes and try again.'
-        );
-      }
-      stopHeartbeat = startLockHeartbeat(this.tracker, this.tracker.lockTtlSeconds);
-    }
+    return withLock(tracker, dryRun, () => runPending(tracker, loader, client, config, limit, dryRun));
+  };
 
-    try {
-      const appliedMigrations = await this.tracker.getAppliedMigrations();
-      const appliedVersions = appliedMigrations
-        .filter((m) => m.status === 'applied')
-        .map((m) => m.version);
-
-      // Load every migration once and index by version. Without this, the
-      // checksum-mismatch loop below would call `loader.getMigration(...)`
-      // for each applied migration — and each of those re-reads the
-      // directory and re-imports every file. The loader caches the result
-      // internally, but going through a Map here also flattens the per-call
-      // microtask overhead.
-      const allMigrations = await this.loader.loadMigrations();
-      const migrationByVersion = new Map(allMigrations.map((m) => [m.version, m]));
-
-      // Check for checksum mismatches on applied migrations
-      for (const applied of appliedMigrations.filter((m) => m.status === 'applied')) {
-        const file = migrationByVersion.get(applied.version);
-        if (file && applied.checksum && file.checksum !== applied.checksum) {
-          console.warn(
-            `⚠️  Warning: Migration ${applied.version} has been modified since it was applied. ` +
-              `Original checksum: ${applied.checksum}, Current: ${file.checksum}`
-          );
-        }
-      }
-
-      let pendingMigrations = allMigrations.filter((m) => !appliedVersions.includes(m.version));
-
-      // Apply limit if specified
-      if (limit) {
-        pendingMigrations = pendingMigrations.slice(0, limit);
-      }
-
-      if (pendingMigrations.length === 0) {
-        console.log('✅ No pending migrations');
-        return [];
-      }
-
-      if (dryRun) {
-        console.log(`\n🔍 DRY RUN - Would apply ${pendingMigrations.length} migration(s):\n`);
-        for (const migrationFile of pendingMigrations) {
-          console.log(`   ${migrationFile.version}: ${migrationFile.name}`);
-          if (migrationFile.migration.description) {
-            console.log(`      ${migrationFile.migration.description}`);
-          }
-        }
-        console.log('\nNo changes were made.\n');
-        return pendingMigrations;
-      }
-
-      console.log(`\n📦 Found ${pendingMigrations.length} pending migration(s)\n`);
-
-      const executed: MigrationFile[] = [];
-
-      for (const migrationFile of pendingMigrations) {
-        try {
-          console.log(`⬆️  Applying ${migrationFile.version}: ${migrationFile.name}`);
-
-          const context = this.createContext();
-          await migrationFile.migration.up(context);
-
-          await this.tracker.markAsApplied(
-            migrationFile.version,
-            migrationFile.name,
-            migrationFile.migration.schema,
-            undefined,
-            migrationFile.checksum
-          );
-
-          console.log(`✅ Applied ${migrationFile.version}: ${migrationFile.name}\n`);
-          executed.push(migrationFile);
-        } catch (error: any) {
-          console.error(`❌ Failed to apply ${migrationFile.version}: ${error.message}\n`);
-
-          await this.tracker.markAsFailed(migrationFile.version, error.message);
-
-          throw new Error(`Migration ${migrationFile.version} failed: ${error.message}`);
-        }
-      }
-
-      return executed;
-    } finally {
-      // Always stop the heartbeat and release the lock — in that order, so
-      // we don't refresh a lock we're about to delete.
-      if (stopHeartbeat) stopHeartbeat();
-      if (!dryRun) {
-        await this.tracker.releaseLock();
-      }
-    }
-  }
-
-  /**
-   * Rollback last migration
-   */
-  async down(steps: number = 1, dryRun: boolean = false): Promise<MigrationFile[]> {
+  const down = async (steps: number = 1, dryRun: boolean = false): Promise<MigrationFile[]> => {
     if (!Number.isInteger(steps) || steps <= 0) {
       throw new Error(
         `runner.down(steps) requires a positive integer (got ${JSON.stringify(steps)}).`
       );
     }
 
-    await this.initialize();
+    await initialize();
 
-    // Acquire lock unless dry run
-    let stopHeartbeat: (() => void) | undefined;
-    if (!dryRun) {
-      const lockAcquired = await this.tracker.acquireLock();
-      if (!lockAcquired) {
-        throw new Error('Could not acquire migration lock. Another migration may be in progress.');
-      }
-      stopHeartbeat = startLockHeartbeat(this.tracker, this.tracker.lockTtlSeconds);
-    }
+    return withLock(tracker, dryRun, () => runRollback(tracker, loader, client, config, steps, dryRun));
+  };
 
-    try {
-      const appliedMigrations = await this.tracker.getAppliedMigrations();
-      // Full applied list, semver-descending. We need the whole thing (not
-      // just the slice we're about to roll back) so we can tell the tracker
-      // what version the CURRENT pointer should fall back to after each
-      // step — without making it re-Query the migration history every time.
-      const allApplied = appliedMigrations
-        .filter((m) => m.status === 'applied')
-        .sort((a, b) => compareSemver(b.version, a.version));
-      const applied = allApplied.slice(0, steps);
-
-      if (applied.length === 0) {
-        console.log('✅ No migrations to rollback');
-        return [];
-      }
-
-      if (dryRun) {
-        console.log(`\n🔍 DRY RUN - Would rollback ${applied.length} migration(s):\n`);
-        for (const record of applied) {
-          console.log(`   ${record.version}: ${record.name}`);
-        }
-        console.log('\nNo changes were made.\n');
-        return [];
-      }
-
-      console.log(`\n📦 Rolling back ${applied.length} migration(s)\n`);
-
-      // Load every migration once. The loader caches internally, but routing
-      // through a Map here keeps the hot loop free of per-call awaits.
-      const allMigrations = await this.loader.loadMigrations();
-      const migrationByVersion = new Map(allMigrations.map((m) => [m.version, m]));
-
-      const rolledBack: MigrationFile[] = [];
-
-      for (let i = 0; i < applied.length; i++) {
-        const record = applied[i]!;
-        try {
-          const migrationFile = migrationByVersion.get(record.version);
-
-          if (!migrationFile) {
-            throw new Error(`Migration file not found for version ${record.version}`);
-          }
-
-          console.log(`⬇️  Rolling back ${migrationFile.version}: ${migrationFile.name}`);
-
-          const context = this.createContext();
-          await migrationFile.migration.down(context);
-
-          // After rolling this one back, the new CURRENT is whatever applied
-          // version sits one slot deeper in `allApplied`. If we've consumed
-          // the whole list, fall back to v0000 (no schema applied).
-          const previousVersion = allApplied[i + 1]?.version ?? 'v0000';
-          await this.tracker.markAsRolledBack(migrationFile.version, previousVersion);
-
-          console.log(`✅ Rolled back ${migrationFile.version}: ${migrationFile.name}\n`);
-          rolledBack.push(migrationFile);
-        } catch (error: any) {
-          console.error(`❌ Failed to rollback ${record.version}: ${error.message}\n`);
-
-          await this.tracker.markAsFailed(record.version, error.message);
-
-          throw new Error(`Rollback of ${record.version} failed: ${error.message}`);
-        }
-      }
-
-      return rolledBack;
-    } finally {
-      if (stopHeartbeat) stopHeartbeat();
-      if (!dryRun) {
-        await this.tracker.releaseLock();
-      }
-    }
-  }
-
-  /**
-   * Get migration status
-   */
-  async status(): Promise<MigrationStatus[]> {
-    await this.initialize();
-
-    const allMigrations = await this.loader.loadMigrations();
-    const appliedMigrations = await this.tracker.getAppliedMigrations();
+  const status = async (): Promise<MigrationStatus[]> => {
+    await initialize();
+    const [allMigrations, appliedMigrations] = await Promise.all([
+      loader.loadMigrations(),
+      tracker.getAppliedMigrations(),
+    ]);
 
     const appliedMap = new Map(appliedMigrations.map((m) => [m.version, m]));
 
@@ -286,21 +148,15 @@ export class MigrationRunner {
         error: record.error,
       };
     });
-  }
+  };
 
-  /**
-   * Get current version
-   */
-  async getCurrentVersion(): Promise<string | null> {
-    await this.initialize();
-    return this.tracker.getCurrentVersion();
-  }
+  const getCurrentVersion = async (): Promise<string | null> => {
+    await initialize();
+    return tracker.getCurrentVersion();
+  };
 
-  /**
-   * Reset all migrations (rollback everything)
-   */
-  async reset(): Promise<void> {
-    const appliedMigrations = await this.tracker.getAppliedMigrations();
+  const reset = async (): Promise<void> => {
+    const appliedMigrations = await tracker.getAppliedMigrations();
     const appliedCount = appliedMigrations.filter((m) => m.status === 'applied').length;
 
     if (appliedCount === 0) {
@@ -309,30 +165,162 @@ export class MigrationRunner {
     }
 
     console.log(`\n⚠️  Resetting ${appliedCount} migration(s)\n`);
-    await this.down(appliedCount);
+    await down(appliedCount);
+  };
+
+  return { initialize, up, down, status, getCurrentVersion, reset };
+};
+
+const runPending = async (
+  tracker: MigrationTrackerHandle,
+  loader: MigrationLoaderHandle,
+  client: DynamoDBDocumentClient,
+  config: MigrationConfig,
+  limit: number | undefined,
+  dryRun: boolean
+): Promise<MigrationFile[]> => {
+  const appliedMigrations = await tracker.getAppliedMigrations();
+  const appliedVersions = appliedMigrations
+    .filter((m) => m.status === 'applied')
+    .map((m) => m.version);
+
+  // Load every migration once and index by version. Without this, the
+  // checksum-mismatch loop below would call `loader.getMigration(...)`
+  // for each applied migration — and each of those re-reads the
+  // directory and re-imports every file. The loader caches the result
+  // internally, but going through a Map here also flattens the per-call
+  // microtask overhead.
+  const allMigrations = await loader.loadMigrations();
+  const migrationByVersion = new Map(allMigrations.map((m) => [m.version, m]));
+
+  // Check for checksum mismatches on applied migrations
+  appliedMigrations
+    .filter((m) => m.status === 'applied')
+    .forEach((applied) => {
+      const file = migrationByVersion.get(applied.version);
+      if (file && applied.checksum && file.checksum !== applied.checksum) {
+        console.warn(
+          `⚠️  Warning: Migration ${applied.version} has been modified since it was applied. ` +
+            `Original checksum: ${applied.checksum}, Current: ${file.checksum}`
+        );
+      }
+    });
+
+  const pendingAll = allMigrations.filter((m) => !appliedVersions.includes(m.version));
+  const pendingMigrations = limit ? pendingAll.slice(0, limit) : pendingAll;
+
+  if (pendingMigrations.length === 0) {
+    console.log('✅ No pending migrations');
+    return [];
   }
 
-  /**
-   * Create migration context
-   */
-  private createContext(): MigrationContext {
-    return {
-      client: this.client,
-      tableName: this.config.tableName,
-      tracker: this.tracker,
-      config: this.config,
-      dynamodb: {
-        ScanCommand,
-        QueryCommand,
-        GetCommand,
-        PutCommand,
-        UpdateCommand,
-        DeleteCommand,
-        BatchGetCommand,
-        BatchWriteCommand,
-        TransactWriteCommand,
-        TransactGetCommand,
-      },
-    };
+  if (dryRun) {
+    console.log(`\n🔍 DRY RUN - Would apply ${pendingMigrations.length} migration(s):\n`);
+    pendingMigrations.forEach((migrationFile) => {
+      console.log(`   ${migrationFile.version}: ${migrationFile.name}`);
+      if (migrationFile.migration.description) {
+        console.log(`      ${migrationFile.migration.description}`);
+      }
+    });
+    console.log('\nNo changes were made.\n');
+    return pendingMigrations;
   }
-}
+
+  console.log(`\n📦 Found ${pendingMigrations.length} pending migration(s)\n`);
+
+  const context = createContext(client, config, tracker);
+  const executed: MigrationFile[] = [];
+
+  for (const migrationFile of pendingMigrations) {
+    try {
+      console.log(`⬆️  Applying ${migrationFile.version}: ${migrationFile.name}`);
+      await migrationFile.migration.up(context);
+      await tracker.markAsApplied(
+        migrationFile.version,
+        migrationFile.name,
+        migrationFile.migration.schema,
+        undefined,
+        migrationFile.checksum
+      );
+      console.log(`✅ Applied ${migrationFile.version}: ${migrationFile.name}\n`);
+      executed.push(migrationFile);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`❌ Failed to apply ${migrationFile.version}: ${message}\n`);
+      await tracker.markAsFailed(migrationFile.version, message);
+      throw new Error(`Migration ${migrationFile.version} failed: ${message}`);
+    }
+  }
+
+  return executed;
+};
+
+const runRollback = async (
+  tracker: MigrationTrackerHandle,
+  loader: MigrationLoaderHandle,
+  client: DynamoDBDocumentClient,
+  config: MigrationConfig,
+  steps: number,
+  dryRun: boolean
+): Promise<MigrationFile[]> => {
+  const appliedMigrations = await tracker.getAppliedMigrations();
+  // Full applied list, semver-descending. We need the whole thing (not
+  // just the slice we're about to roll back) so we can tell the tracker
+  // what version the CURRENT pointer should fall back to after each
+  // step — without making it re-Query the migration history every time.
+  const allApplied = appliedMigrations
+    .filter((m) => m.status === 'applied')
+    .sort((a, b) => compareSemver(b.version, a.version));
+  const applied = allApplied.slice(0, steps);
+
+  if (applied.length === 0) {
+    console.log('✅ No migrations to rollback');
+    return [];
+  }
+
+  if (dryRun) {
+    console.log(`\n🔍 DRY RUN - Would rollback ${applied.length} migration(s):\n`);
+    applied.forEach((record) => console.log(`   ${record.version}: ${record.name}`));
+    console.log('\nNo changes were made.\n');
+    return [];
+  }
+
+  console.log(`\n📦 Rolling back ${applied.length} migration(s)\n`);
+
+  // Load every migration once. The loader caches internally, but routing
+  // through a Map here keeps the hot loop free of per-call awaits.
+  const allMigrations = await loader.loadMigrations();
+  const migrationByVersion = new Map(allMigrations.map((m) => [m.version, m]));
+
+  const context = createContext(client, config, tracker);
+  const rolledBack: MigrationFile[] = [];
+
+  for (const [i, record] of applied.entries()) {
+    try {
+      const migrationFile = migrationByVersion.get(record.version);
+
+      if (!migrationFile) {
+        throw new Error(`Migration file not found for version ${record.version}`);
+      }
+
+      console.log(`⬇️  Rolling back ${migrationFile.version}: ${migrationFile.name}`);
+      await migrationFile.migration.down(context);
+
+      // After rolling this one back, the new CURRENT is whatever applied
+      // version sits one slot deeper in `allApplied`. If we've consumed
+      // the whole list, fall back to v0000 (no schema applied).
+      const previousVersion = allApplied[i + 1]?.version ?? 'v0000';
+      await tracker.markAsRolledBack(migrationFile.version, previousVersion);
+
+      console.log(`✅ Rolled back ${migrationFile.version}: ${migrationFile.name}\n`);
+      rolledBack.push(migrationFile);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`❌ Failed to rollback ${record.version}: ${message}\n`);
+      await tracker.markAsFailed(record.version, message);
+      throw new Error(`Rollback of ${record.version} failed: ${message}`);
+    }
+  }
+
+  return rolledBack;
+};

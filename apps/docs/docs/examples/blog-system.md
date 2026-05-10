@@ -240,17 +240,16 @@ async function updateUserProfile(
   username: string,
   updates: { name?: string; bio?: string; avatar?: string }
 ) {
-  // DynamoDB rejects an UpdateItem with no UpdateExpression, so bail out
-  // when there's nothing to update.
-  if (!updates.name && !updates.bio && !updates.avatar) return;
+  // Filter out undefined fields so DynamoDB never sees an empty UpdateExpression.
+  const fields = Object.fromEntries(
+    Object.entries(updates).filter(([, value]) => value !== undefined)
+  );
+  if (Object.keys(fields).length === 0) return;
 
-  let query = table.entities.User.update({ username });
-
-  if (updates.name) query = query.set('name', updates.name);
-  if (updates.bio) query = query.set('bio', updates.bio);
-  if (updates.avatar) query = query.set('avatar', updates.avatar);
-
-  return await query.returning('ALL_NEW').execute();
+  return await table.entities.User.update({ username })
+    .set(fields)
+    .returning('ALL_NEW')
+    .execute();
 }
 
 // Usage
@@ -347,17 +346,15 @@ async function updatePost(
   postId: string,
   updates: { title?: string; content?: string; published?: boolean }
 ) {
-  if (!updates.title && !updates.content && updates.published === undefined) return;
+  const fields = Object.fromEntries(
+    Object.entries(updates).filter(([, value]) => value !== undefined)
+  );
+  if (Object.keys(fields).length === 0) return;
 
-  let query = table.entities.Post.update({ username, postId });
-
-  if (updates.title) query = query.set('title', updates.title);
-  if (updates.content) query = query.set('content', updates.content);
-  if (updates.published !== undefined) {
-    query = query.set('published', updates.published);
-  }
-
-  return await query.returning('ALL_NEW').execute();
+  return await table.entities.Post.update({ username, postId })
+    .set(fields)
+    .returning('ALL_NEW')
+    .execute();
 }
 ```
 
@@ -587,14 +584,12 @@ DynamoDB paginates with an opaque `LastEvaluatedKey`, not page numbers — pass 
 
 ```typescript
 async function getUserFeed(username: string, pageSize: number = 20, pageToken?: any) {
-  let query = table.entities.Post.query()
+  const base = table.entities.Post.query()
     .where((attr, op) => op.eq(attr.username, username))
     .limit(pageSize)
     .scanIndexForward(false);
 
-  if (pageToken) query = query.startFrom(pageToken);
-
-  const result = await query.executeWithPagination();
+  const result = await (pageToken ? base.startFrom(pageToken) : base).executeWithPagination();
 
   return {
     posts: result.items,
@@ -627,17 +622,13 @@ async function searchPosts(keyword: string) {
 
 ```typescript
 async function getPaginatedPosts(limit: number = 20, lastKey?: any) {
-  let query = table.entities.Post.query()
+  const base = table.entities.Post.query()
     .where((attr, op) => op.eq(attr.published, true))
     .useIndex('gsi1')
     .limit(limit)
     .scanIndexForward(false);
 
-  if (lastKey) {
-    query = query.startFrom(lastKey);
-  }
-
-  return await query.executeWithPagination();
+  return await (lastKey ? base.startFrom(lastKey) : base).executeWithPagination();
 }
 
 // Usage - get first page

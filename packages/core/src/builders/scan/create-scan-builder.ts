@@ -164,87 +164,47 @@ export function createScanBuilder<Model>(
     },
 
     dbParams() {
-      let filterExpression = '';
-      let expressionAttributeNames: Record<string, string> = {};
-      let expressionAttributeValues: Record<string, any> = {};
+      const filterResult =
+        filters.length > 0
+          ? buildExpression(
+              filters.length === 1 && filters[0]
+                ? filters[0]
+                : { expression: '', operator: 'AND' as const, children: filters }
+            )
+          : { expression: '', names: {} as Record<string, string>, values: {} as Record<string, any> };
 
-      // Build FilterExpression from filters
-      if (filters.length > 0) {
-        const combinedFilter =
-          filters.length === 1 && filters[0]
-            ? filters[0]
-            : {
-                expression: '',
-                operator: 'AND' as const,
-                children: filters,
-              };
+      // Idempotent merge: filter and projection placeholders both map
+      // `#name → name`, so collisions resolve to the same value.
+      const projection =
+        projectionAttrs.length > 0
+          ? buildProjectionExpression(projectionAttrs.map((attr) => String(attr)))
+          : undefined;
 
-        const result = buildExpression(combinedFilter);
-        filterExpression = result.expression;
-        expressionAttributeNames = result.names;
-        expressionAttributeValues = result.values;
-      }
-
-      // Build ProjectionExpression with placeholders so reserved words
-      // (name, date, status, type, …) don't blow up at DynamoDB.
-      let projectionExpression = '';
-      if (projectionAttrs.length > 0) {
-        const proj = buildProjectionExpression(projectionAttrs.map((attr) => String(attr)));
-        projectionExpression = proj.ProjectionExpression;
-        // Idempotent merge: filter and projection placeholders both map
-        // `#name → name`, so collisions resolve to the same value.
-        expressionAttributeNames = {
-          ...proj.ExpressionAttributeNames,
-          ...expressionAttributeNames,
-        };
-      }
-
-      const params: any = {
-        TableName: tableName,
+      const expressionAttributeNames = {
+        ...(projection?.ExpressionAttributeNames ?? {}),
+        ...filterResult.names,
       };
 
-      if (filterExpression) {
-        params.FilterExpression = filterExpression;
-      }
-
-      if (Object.keys(expressionAttributeNames).length > 0) {
-        params.ExpressionAttributeNames = expressionAttributeNames;
-      }
-
-      if (Object.keys(expressionAttributeValues).length > 0) {
-        params.ExpressionAttributeValues = expressionAttributeValues;
-      }
-
-      if (projectionExpression) {
-        params.ProjectionExpression = projectionExpression;
-      }
-
-      if (limitValue !== undefined) {
-        params.Limit = limitValue;
-      }
-
-      if (isConsistentRead) {
-        params.ConsistentRead = true;
-      }
-
-      if (indexName) {
-        params.IndexName = indexName;
-      }
-
-      if (exclusiveStartKey) {
-        params.ExclusiveStartKey = exclusiveStartKey;
-      }
-
-      if (segmentConfig) {
-        params.Segment = segmentConfig.segment;
-        params.TotalSegments = segmentConfig.totalSegments;
-      }
-
-      if (consumedCapacity) {
-        params.ReturnConsumedCapacity = consumedCapacity;
-      }
-
-      return params;
+      return {
+        TableName: tableName,
+        ...(filterResult.expression && { FilterExpression: filterResult.expression }),
+        ...(Object.keys(expressionAttributeNames).length > 0 && {
+          ExpressionAttributeNames: expressionAttributeNames,
+        }),
+        ...(Object.keys(filterResult.values).length > 0 && {
+          ExpressionAttributeValues: filterResult.values,
+        }),
+        ...(projection && { ProjectionExpression: projection.ProjectionExpression }),
+        ...(limitValue !== undefined && { Limit: limitValue }),
+        ...(isConsistentRead && { ConsistentRead: true }),
+        ...(indexName && { IndexName: indexName }),
+        ...(exclusiveStartKey && { ExclusiveStartKey: exclusiveStartKey }),
+        ...(segmentConfig && {
+          Segment: segmentConfig.segment,
+          TotalSegments: segmentConfig.totalSegments,
+        }),
+        ...(consumedCapacity && { ReturnConsumedCapacity: consumedCapacity }),
+      } as any;
     },
 
     /**

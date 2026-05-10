@@ -117,16 +117,10 @@ export function createOpBuilder(): OpBuilder {
     },
     in: (attr, values) => {
       const valueNames = values.map((_, i) => getUniqueValueName(`${attr.name}_in${i}`));
-      const placeholders = valueNames.map((name) => `:${name}`).join(', ');
-      const valuesObj: Record<string, any> = {};
-      valueNames.forEach((name, i) => {
-        valuesObj[`:${name}`] = values[i];
-      });
-
       return {
-        expression: `#${attr.name} IN (${placeholders})`,
+        expression: `#${attr.name} IN (${valueNames.map((name) => `:${name}`).join(', ')})`,
         names: { [`#${attr.name}`]: attr.name },
-        values: valuesObj,
+        values: Object.fromEntries(valueNames.map((name, i) => [`:${name}`, values[i]])),
       };
     },
     size: (attr) => {

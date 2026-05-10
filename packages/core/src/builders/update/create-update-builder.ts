@@ -264,11 +264,6 @@ export function createUpdateBuilder<Model>(
     },
 
     dbParams() {
-      // Build UpdateExpression from actions
-      const updateParts: string[] = [];
-      const allNames: Record<string, string> = {};
-      const allValues: Record<string, any> = {};
-
       // Clone updateActions to avoid mutation
       const actionsToProcess = { ...updateActions, set: [...updateActions.set] };
 
@@ -403,42 +398,43 @@ export function createUpdateBuilder<Model>(
         actionsToProcess.set = [...actionsToProcess.set, timestampAction];
       }
 
-      if (actionsToProcess.set.length > 0) {
-        const setExpressions = actionsToProcess.set.map((action) => {
-          Object.assign(allNames, action.names || {});
-          Object.assign(allValues, action.values || {});
-          return action.expression;
-        });
-        updateParts.push(`SET ${setExpressions.join(', ')}`);
-      }
+      const buildSection = (
+        label: 'SET' | 'REMOVE' | 'ADD' | 'DELETE',
+        actions: UpdateAction[],
+        includeValues: boolean
+      ) =>
+        actions.length === 0
+          ? null
+          : {
+              part: `${label} ${actions.map((a) => a.expression).join(', ')}`,
+              names: Object.assign({}, ...actions.map((a) => a.names ?? {})) as Record<
+                string,
+                string
+              >,
+              values: includeValues
+                ? (Object.assign({}, ...actions.map((a) => a.values ?? {})) as Record<
+                    string,
+                    any
+                  >)
+                : {},
+            };
 
-      if (updateActions.remove.length > 0) {
-        const removeExpressions = updateActions.remove.map((action) => {
-          Object.assign(allNames, action.names || {});
-          return action.expression;
-        });
-        updateParts.push(`REMOVE ${removeExpressions.join(', ')}`);
-      }
+      const sections = [
+        buildSection('SET', actionsToProcess.set, true),
+        buildSection('REMOVE', updateActions.remove, false),
+        buildSection('ADD', updateActions.add, true),
+        buildSection('DELETE', updateActions.delete, true),
+      ].filter((s): s is NonNullable<typeof s> => s !== null);
 
-      if (updateActions.add.length > 0) {
-        const addExpressions = updateActions.add.map((action) => {
-          Object.assign(allNames, action.names || {});
-          Object.assign(allValues, action.values || {});
-          return action.expression;
-        });
-        updateParts.push(`ADD ${addExpressions.join(', ')}`);
-      }
-
-      if (updateActions.delete.length > 0) {
-        const deleteExpressions = updateActions.delete.map((action) => {
-          Object.assign(allNames, action.names || {});
-          Object.assign(allValues, action.values || {});
-          return action.expression;
-        });
-        updateParts.push(`DELETE ${deleteExpressions.join(', ')}`);
-      }
-
-      const updateExpression = updateParts.join(' ');
+      const updateExpression = sections.map((s) => s.part).join(' ');
+      const allNames: Record<string, string> = Object.assign(
+        {},
+        ...sections.map((s) => s.names)
+      );
+      const allValues: Record<string, any> = Object.assign(
+        {},
+        ...sections.map((s) => s.values)
+      );
 
       // DynamoDB rejects an UpdateCommand without an UpdateExpression
       // ("ValidationException: ExpressionAttributeNames must not be empty"
@@ -454,45 +450,23 @@ export function createUpdateBuilder<Model>(
       }
 
       // Build ConditionExpression from conditions
-      let conditionExpression = '';
-      let conditionNames = {};
-      let conditionValues = {};
+      const conditionResult =
+        conditions.length > 0
+          ? buildExpression(
+              conditions.length === 1 && conditions[0]
+                ? conditions[0]
+                : { expression: '', operator: 'AND' as const, children: conditions }
+            )
+          : { expression: '', names: {} as Record<string, string>, values: {} as Record<string, any> };
 
-      if (conditions.length > 0) {
-        const combinedCondition =
-          conditions.length === 1 && conditions[0]
-            ? conditions[0]
-            : {
-                expression: '',
-                operator: 'AND' as const,
-                children: conditions,
-              };
-
-        const result = buildExpression(combinedCondition);
-        conditionExpression = result.expression;
-        conditionNames = result.names;
-        conditionValues = result.values;
-      }
-
-      // Merge names and values
-      const expressionAttributeNames = {
-        ...allNames,
-        ...conditionNames,
-      };
-      const expressionAttributeValues = {
-        ...allValues,
-        ...conditionValues,
-      };
-
-      const extra: any = returnMode !== 'NONE' ? { ReturnValues: returnMode } : {};
+      const expressionAttributeNames = { ...allNames, ...conditionResult.names };
+      const expressionAttributeValues = { ...allValues, ...conditionResult.values };
 
       return {
         TableName: tableName,
         Key: key,
         ...(updateExpression && { UpdateExpression: updateExpression }),
-        ...(conditionExpression && {
-          ConditionExpression: conditionExpression,
-        }),
+        ...(conditionResult.expression && { ConditionExpression: conditionResult.expression }),
         ...(Object.keys(expressionAttributeNames).length && {
           ExpressionAttributeNames: expressionAttributeNames,
         }),
@@ -500,8 +474,8 @@ export function createUpdateBuilder<Model>(
           ExpressionAttributeValues: expressionAttributeValues,
         }),
         ...(consumedCapacity && { ReturnConsumedCapacity: consumedCapacity }),
-        ...extra,
-      };
+        ...(returnMode !== 'NONE' && { ReturnValues: returnMode }),
+      } as any;
     },
 
     async execute() {
