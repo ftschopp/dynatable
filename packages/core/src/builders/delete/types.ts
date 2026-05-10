@@ -11,6 +11,16 @@ export interface DeleteBuilder<Model> extends Omit<OperationBuilder<Model>, 'dbP
   returning(mode: 'NONE' | 'ALL_OLD'): DeleteBuilder<Model>;
 
   /**
+   * Configures the ReturnConsumedCapacity parameter so DynamoDB reports
+   * how many WCUs the delete consumed. Useful for diagnosing throttling.
+   *
+   * - INDEXES: Returns consumed capacity for table and indexes
+   * - TOTAL: Returns total consumed capacity
+   * - NONE: No consumed capacity data returned (default)
+   */
+  returnConsumedCapacity(mode: 'INDEXES' | 'TOTAL' | 'NONE'): DeleteBuilder<Model>;
+
+  /**
    * Converts the builder state to DynamoDB DeleteItem parameters
    */
   dbParams(): DeleteCommandInput;

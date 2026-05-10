@@ -30,7 +30,8 @@ export function createPutBuilder<Model>(
   shouldCheckNotExists = false,
   returnMode: 'NONE' | 'ALL_OLD' = 'NONE',
   enableTimestamps = false,
-  logger?: DynamoDBLogger
+  logger?: DynamoDBLogger,
+  consumedCapacity?: 'INDEXES' | 'TOTAL' | 'NONE'
 ): PutBuilder<Model> {
   const conditions = [...prevConditions];
 
@@ -52,7 +53,8 @@ export function createPutBuilder<Model>(
         shouldCheckNotExists,
         returnMode,
         enableTimestamps,
-        logger
+        logger,
+        consumedCapacity
       );
     },
 
@@ -65,7 +67,8 @@ export function createPutBuilder<Model>(
         true,
         returnMode,
         enableTimestamps,
-        logger
+        logger,
+        consumedCapacity
       );
     },
 
@@ -78,7 +81,22 @@ export function createPutBuilder<Model>(
         shouldCheckNotExists,
         mode,
         enableTimestamps,
-        logger
+        logger,
+        consumedCapacity
+      );
+    },
+
+    returnConsumedCapacity(mode) {
+      return createPutBuilder(
+        tableName,
+        item,
+        client,
+        conditions,
+        shouldCheckNotExists,
+        returnMode,
+        enableTimestamps,
+        logger,
+        mode
       );
     },
 
@@ -137,6 +155,7 @@ export function createPutBuilder<Model>(
         ...(Object.keys(expressionAttributeValues).length && {
           ExpressionAttributeValues: expressionAttributeValues,
         }),
+        ...(consumedCapacity && { ReturnConsumedCapacity: consumedCapacity }),
         ...extra,
       };
     },

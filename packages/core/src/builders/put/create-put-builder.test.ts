@@ -210,4 +210,32 @@ describe('createPutBuilder', () => {
       expect(params.Item).toHaveProperty('updatedAt');
     });
   });
+
+  describe('returnConsumedCapacity', () => {
+    it('omits ReturnConsumedCapacity by default', () => {
+      const item = { id: '123', name: 'Test' };
+      const params = createPutBuilder(tableName, item, client).dbParams();
+      expect(params.ReturnConsumedCapacity).toBeUndefined();
+    });
+
+    it('passes the configured mode through to dbParams', () => {
+      const item = { id: '123', name: 'Test' };
+      const params = createPutBuilder(tableName, item, client)
+        .returnConsumedCapacity('TOTAL')
+        .dbParams();
+      expect(params.ReturnConsumedCapacity).toBe('TOTAL');
+    });
+
+    it('persists across other chained calls (immutability)', () => {
+      const item = { PK: 'USER#1', SK: 'USER#1', id: '123', name: 'Test' };
+      const params = createPutBuilder(tableName, item, client)
+        .returnConsumedCapacity('INDEXES')
+        .ifNotExists()
+        .returning('ALL_OLD')
+        .dbParams();
+      expect(params.ReturnConsumedCapacity).toBe('INDEXES');
+      expect(params.ConditionExpression).toContain('attribute_not_exists');
+      expect(params.ReturnValues).toBe('ALL_OLD');
+    });
+  });
 });

@@ -413,4 +413,28 @@ describe('ScanBuilder', () => {
       expect(ddbMock.calls()).toHaveLength(1);
     });
   });
+
+  describe('returnConsumedCapacity', () => {
+    test('omits ReturnConsumedCapacity by default', () => {
+      const params = createScanBuilder<TestModel>(tableName, client).dbParams();
+      expect(params.ReturnConsumedCapacity).toBeUndefined();
+    });
+
+    test('passes the configured mode through to dbParams', () => {
+      const params = createScanBuilder<TestModel>(tableName, client)
+        .returnConsumedCapacity('TOTAL')
+        .dbParams();
+      expect(params.ReturnConsumedCapacity).toBe('TOTAL');
+    });
+
+    test('persists across other chained calls', () => {
+      const params = createScanBuilder<TestModel>(tableName, client)
+        .returnConsumedCapacity('INDEXES')
+        .filter((attr, op) => op.eq(attr.status, 'active'))
+        .limit(10)
+        .dbParams();
+      expect(params.ReturnConsumedCapacity).toBe('INDEXES');
+      expect(params.Limit).toBe(10);
+    });
+  });
 });

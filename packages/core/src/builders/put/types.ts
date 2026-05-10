@@ -18,6 +18,17 @@ export interface PutBuilder<Model> extends Omit<OperationBuilder<Model>, 'dbPara
   returning(mode: 'NONE' | 'ALL_OLD'): PutBuilder<Model>;
 
   /**
+   * Configures the ReturnConsumedCapacity parameter so DynamoDB reports
+   * how many WCUs the put consumed. Useful for diagnosing throttling and
+   * accounting for index amplification on tables with multiple GSIs.
+   *
+   * - INDEXES: Returns consumed capacity for table and indexes
+   * - TOTAL: Returns total consumed capacity
+   * - NONE: No consumed capacity data returned (default)
+   */
+  returnConsumedCapacity(mode: 'INDEXES' | 'TOTAL' | 'NONE'): PutBuilder<Model>;
+
+  /**
    * Converts the builder state to DynamoDB PutItem parameters
    */
   dbParams(): PutCommandInput;

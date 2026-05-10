@@ -53,7 +53,8 @@ export function createUpdateBuilder<Model>(
   enableTimestamps = false,
   logger?: DynamoDBLogger,
   indexContext?: IndexContext,
-  setInputs: Record<string, any> = {}
+  setInputs: Record<string, any> = {},
+  consumedCapacity?: 'INDEXES' | 'TOTAL' | 'NONE'
 ): UpdateBuilder<Model> {
   const conditions = [...prevConditions];
 
@@ -88,7 +89,8 @@ export function createUpdateBuilder<Model>(
         enableTimestamps,
         logger,
         indexContext,
-        setInputs
+        setInputs,
+        consumedCapacity
       );
     },
 
@@ -128,7 +130,8 @@ export function createUpdateBuilder<Model>(
           enableTimestamps,
           logger,
           indexContext,
-          newSetInputs
+          newSetInputs,
+          consumedCapacity
         );
       }
 
@@ -151,7 +154,8 @@ export function createUpdateBuilder<Model>(
         enableTimestamps,
         logger,
         indexContext,
-        { ...setInputs, [attrName]: value }
+        { ...setInputs, [attrName]: value },
+        consumedCapacity
       );
     },
 
@@ -172,7 +176,8 @@ export function createUpdateBuilder<Model>(
         enableTimestamps,
         logger,
         indexContext,
-        setInputs
+        setInputs,
+        consumedCapacity
       );
     },
 
@@ -195,7 +200,8 @@ export function createUpdateBuilder<Model>(
         enableTimestamps,
         logger,
         indexContext,
-        setInputs
+        setInputs,
+        consumedCapacity
       );
     },
 
@@ -218,7 +224,8 @@ export function createUpdateBuilder<Model>(
         enableTimestamps,
         logger,
         indexContext,
-        setInputs
+        setInputs,
+        consumedCapacity
       );
     },
 
@@ -234,7 +241,25 @@ export function createUpdateBuilder<Model>(
         enableTimestamps,
         logger,
         indexContext,
-        setInputs
+        setInputs,
+        consumedCapacity
+      );
+    },
+
+    returnConsumedCapacity(mode) {
+      return createUpdateBuilder(
+        tableName,
+        key,
+        client,
+        conditions,
+        updateActions,
+        returnMode,
+        valueCounter,
+        enableTimestamps,
+        logger,
+        indexContext,
+        setInputs,
+        mode
       );
     },
 
@@ -474,6 +499,7 @@ export function createUpdateBuilder<Model>(
         ...(Object.keys(expressionAttributeValues).length && {
           ExpressionAttributeValues: expressionAttributeValues,
         }),
+        ...(consumedCapacity && { ReturnConsumedCapacity: consumedCapacity }),
         ...extra,
       };
     },

@@ -14,7 +14,8 @@ export function createDeleteBuilder<Model>(
   client: DynamoDBClient,
   prevConditions: Condition[] = [],
   returnMode: 'NONE' | 'ALL_OLD' = 'NONE',
-  logger?: DynamoDBLogger
+  logger?: DynamoDBLogger,
+  consumedCapacity?: 'INDEXES' | 'TOTAL' | 'NONE'
 ): DeleteBuilder<Model> {
   const conditions = [...prevConditions];
 
@@ -33,12 +34,33 @@ export function createDeleteBuilder<Model>(
         client,
         [...conditions, condition],
         returnMode,
-        logger
+        logger,
+        consumedCapacity
       );
     },
 
     returning(mode) {
-      return createDeleteBuilder(tableName, key, client, conditions, mode, logger);
+      return createDeleteBuilder(
+        tableName,
+        key,
+        client,
+        conditions,
+        mode,
+        logger,
+        consumedCapacity
+      );
+    },
+
+    returnConsumedCapacity(mode) {
+      return createDeleteBuilder(
+        tableName,
+        key,
+        client,
+        conditions,
+        returnMode,
+        logger,
+        mode
+      );
     },
 
     dbParams() {
@@ -77,6 +99,7 @@ export function createDeleteBuilder<Model>(
         ...(Object.keys(expressionAttributeValues).length && {
           ExpressionAttributeValues: expressionAttributeValues,
         }),
+        ...(consumedCapacity && { ReturnConsumedCapacity: consumedCapacity }),
         ...extra,
       };
     },
