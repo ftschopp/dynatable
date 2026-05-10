@@ -12,11 +12,12 @@ A complete example of an Instagram clone with users, photos, likes, comments, an
 
 ```mermaid
 erDiagram
-    USER   ||--o{ PHOTO   : "posts"
-    USER   ||--o{ STORY   : "posts"
-    PHOTO  ||--o{ COMMENT : "has"
-    PHOTO  ||--o{ LIKE    : "has"
-    USER   }o--o{ USER    : "follows (via Follow)"
+    USER  ||--o{ PHOTO   : "posts"
+    USER  ||--o{ STORY   : "posts"
+    PHOTO ||--o{ COMMENT : "has"
+    PHOTO ||--o{ LIKE    : "has"
+    USER  ||--o{ FOLLOW  : "is followed in"
+    USER  ||--o{ FOLLOW  : "follows in"
 
     USER {
         string username PK
@@ -51,12 +52,12 @@ erDiagram
         string likeId "GSI1 sort key"
     }
     FOLLOW {
-        string followedUsername PK "partition"
-        string followingUsername PK "sort"
+        string followedUsername  PK,FK "partition"
+        string followingUsername PK,FK "sort"
     }
 ```
 
-`FOLLOW` represents the N:M `User ↔ User` relationship; its GSI1 swaps `PK`/`SK` so you can query both "who follows X" (primary) and "who X follows" (GSI1).
+`FOLLOW` is the join entity for the N:M `User ↔ User` relationship: `followedUsername` and `followingUsername` are both `PK`+`FK` to `USER`. Its GSI1 swaps the two columns so you can query both "who follows X" (primary index) and "who X follows" (GSI1).
 
 ## Single Table Design
 
