@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-core [1.5.2](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.5.1...@ftschopp/dynatable-core@1.5.2) (2026-05-10)
+
+
+### Bug Fixes
+
+* **core:** guard primary-key template fields and non-set ops on GSI templates in update builder ([#42](https://github.com/ftschopp/dynatable/issues/42)) ([4487ff2](https://github.com/ftschopp/dynatable/commit/4487ff22ad507b37aa0e2e279a602a4813afddba))
+
 ## @ftschopp/dynatable-core [1.5.1](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.5.0...@ftschopp/dynatable-core@1.5.1) (2026-05-10)
 
 
