@@ -1,17 +1,13 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-import { BatchWriteItemCommandInput } from '@aws-sdk/client-dynamodb';
+import type { BatchWriteCommandInput } from '@aws-sdk/lib-dynamodb';
 
 /**
- * A single write request that can be either a PutRequest or DeleteRequest
+ * A single write request — either a PutRequest or a DeleteRequest. Sourced
+ * from the SDK's `BatchWriteCommandInput.RequestItems` value type so the
+ * builder's accumulated requests are assignable to the SDK input without
+ * casts. `Item` and `Key` are `Record<string, NativeAttributeValue> | undefined`
+ * because the doc-client marshalls native JS values automatically.
  */
-export type WriteRequest = {
-  PutRequest?: {
-    Item: any;
-  };
-  DeleteRequest?: {
-    Key: any;
-  };
-};
+export type WriteRequest = NonNullable<BatchWriteCommandInput['RequestItems']>[string][number];
 
 /**
  * BatchWriteBuilder allows you to put or delete multiple items from one or more tables
@@ -43,7 +39,7 @@ export type BatchWriteBuilder = {
    * this directly to the SDK will fail at runtime — `execute()` is what
    * applies the chunking and retry logic.
    */
-  dbParams(): BatchWriteItemCommandInput;
+  dbParams(): BatchWriteCommandInput;
 
   /**
    * Execute the BatchWriteItem operation.

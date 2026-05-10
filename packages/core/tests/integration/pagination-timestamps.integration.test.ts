@@ -71,8 +71,8 @@ describe('Pagination and Timestamps Integration Tests', () => {
         email: 'alice@example.com',
       }).dbParams();
 
-      expect(params.Item.createdAt).toEqual('2024-01-15T10:00:00.000Z');
-      expect(params.Item.updatedAt).toEqual('2024-01-15T10:00:00.000Z');
+      expect(params.Item!.createdAt).toEqual('2024-01-15T10:00:00.000Z');
+      expect(params.Item!.updatedAt).toEqual('2024-01-15T10:00:00.000Z');
     });
 
     test('update should add updatedAt timestamp automatically', () => {
@@ -108,7 +108,7 @@ describe('Pagination and Timestamps Integration Tests', () => {
         { username: 'charlie', name: 'Charlie Brown' },
       ]).dbParams();
 
-      const items = params.RequestItems?.TestTable.map((req: any) => req.PutRequest.Item);
+      const items = params.RequestItems?.TestTable!.map((req: any) => req.PutRequest.Item);
 
       items?.forEach((item: any) => {
         expect(item.createdAt).toEqual('2024-01-15T10:00:00.000Z');
@@ -123,9 +123,9 @@ describe('Pagination and Timestamps Integration Tests', () => {
         content: 'Hello World!',
       }).dbParams();
 
-      expect(params.Item.postId).toBeDefined();
-      expect(params.Item.createdAt).toEqual('2024-01-15T10:00:00.000Z');
-      expect(params.Item.updatedAt).toEqual('2024-01-15T10:00:00.000Z');
+      expect(params.Item!.postId).toBeDefined();
+      expect(params.Item!.createdAt).toEqual('2024-01-15T10:00:00.000Z');
+      expect(params.Item!.updatedAt).toEqual('2024-01-15T10:00:00.000Z');
     });
 
     test('update with multiple SET operations should include updatedAt', () => {
@@ -143,7 +143,9 @@ describe('Pagination and Timestamps Integration Tests', () => {
       expect(updateExpr).toContain('SET');
 
       // Verify timestamp value is set
-      expect(params.ExpressionAttributeValues[':updatedAt_ts']).toEqual('2024-01-15T10:00:00.000Z');
+      expect(params.ExpressionAttributeValues![':updatedAt_ts']).toEqual(
+        '2024-01-15T10:00:00.000Z'
+      );
     });
   });
 

@@ -6,7 +6,7 @@ import {
   InferInputFromSchema,
   SchemaDefinition,
 } from './core/types';
-import { createEntityAPI, EntityAPI } from './entity';
+import { createEntityAPI, EntityAPI, EntityAPIOptions } from './entity';
 import { createTransactWriteBuilder, TransactWriteBuilder } from './builders/transact-write';
 import { createTransactGetBuilder, TransactGetBuilder } from './builders/transact-get';
 import { DynamoDBLogger } from './utils/dynamodb-logger';
@@ -76,12 +76,13 @@ export class Table<S extends SchemaDefinition> {
         throw new Error(`Model '${modelName}' is missing in schema`);
       }
 
-      rawEntities[modelName] = createEntityAPI(tableName, modelName, model, client, {
-        logger,
+      const entityOpts: EntityAPIOptions = {
         timestamps: schema.params?.timestamps ?? false,
         cleanInternalKeys: schema.params?.cleanInternalKeys ?? false,
         internalKeys,
-      });
+        logger,
+      };
+      rawEntities[modelName] = createEntityAPI(tableName, modelName, model, client, entityOpts);
     }
 
     this.entities = rawEntities as EntityMap<S>;

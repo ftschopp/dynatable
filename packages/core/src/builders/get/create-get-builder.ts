@@ -5,6 +5,12 @@ import { buildProjectionExpression } from '../shared';
 import { GetBuilder } from './types';
 import { DynamoDBLogger } from '../../utils/dynamodb-logger';
 
+type GetBuilderOptions<Model> = {
+  projection?: (keyof Model)[];
+  consistentRead?: boolean;
+  returnConsumedCapacity?: 'INDEXES' | 'TOTAL' | 'NONE';
+};
+
 /**
  * Creates a GetBuilder to retrieve an item by its key.
  */
@@ -12,33 +18,25 @@ export function createGetBuilder<KeyInput, Model>(
   tableName: string,
   key: Record<string, any>,
   client: DynamoDBClient,
-  options?: {
-    projection?: (keyof Model)[];
-    consistentRead?: boolean;
-    returnConsumedCapacity?: 'INDEXES' | 'TOTAL' | 'NONE';
-  },
+  options?: GetBuilderOptions<Model>,
   logger?: DynamoDBLogger
 ): GetBuilder<KeyInput, Model> {
   const projection = options?.projection ?? [];
   const isConsistent = options?.consistentRead ?? false;
   const consumedCapacity = options?.returnConsumedCapacity;
 
+  const buildOpts = (overrides: GetBuilderOptions<Model>): GetBuilderOptions<Model> => ({
+    projection: overrides.projection ?? projection,
+    consistentRead: overrides.consistentRead ?? isConsistent,
+    returnConsumedCapacity: overrides.returnConsumedCapacity ?? consumedCapacity,
+  });
+
   return {
     /**
      * Select only specific attributes to retrieve.
      */
     select(attrs) {
-      return createGetBuilder(
-        tableName,
-        key,
-        client,
-        {
-          projection: attrs,
-          consistentRead: isConsistent,
-          returnConsumedCapacity: consumedCapacity,
-        },
-        logger
-      );
+      return createGetBuilder(tableName, key, client, buildOpts({ projection: attrs }), logger);
     },
 
     /**
@@ -49,11 +47,7 @@ export function createGetBuilder<KeyInput, Model>(
         tableName,
         key,
         client,
-        {
-          projection,
-          consistentRead: true,
-          returnConsumedCapacity: consumedCapacity,
-        },
+        buildOpts({ consistentRead: true }),
         logger
       );
     },
@@ -66,11 +60,7 @@ export function createGetBuilder<KeyInput, Model>(
         tableName,
         key,
         client,
-        {
-          projection,
-          consistentRead: isConsistent,
-          returnConsumedCapacity: mode,
-        },
+        buildOpts({ returnConsumedCapacity: mode }),
         logger
       );
     },

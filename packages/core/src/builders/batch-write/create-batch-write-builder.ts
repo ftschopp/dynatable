@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import {
   BatchWriteCommand,

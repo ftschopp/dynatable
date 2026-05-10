@@ -2,12 +2,25 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
 import {
   TransactWriteBuilder,
+  TransactWriteItem,
   TransactWriteState,
   TransactPutParams,
   TransactUpdateParams,
   TransactDeleteParams,
   TransactConditionCheckParams,
 } from './types';
+
+/**
+ * The builder accepts the looser `*CommandInput` shapes for ergonomics
+ * (e.g. `UpdateCommandInput.UpdateExpression` is optional), but the SDK's
+ * `TransactWriteCommandInput` requires the strict transact-item shape.
+ * Both shapes are runtime-compatible — the cast here is a TS-only bridge,
+ * not a behavioral change.
+ */
+type StrictPut = NonNullable<TransactWriteItem['Put']>;
+type StrictUpdate = NonNullable<TransactWriteItem['Update']>;
+type StrictDelete = NonNullable<TransactWriteItem['Delete']>;
+type StrictConditionCheck = NonNullable<TransactWriteItem['ConditionCheck']>;
 
 /**
  * Creates the initial state for a TransactWrite builder
@@ -24,7 +37,7 @@ const addPutItem =
   (state: TransactWriteState) =>
   (params: TransactPutParams): TransactWriteState => ({
     ...state,
-    items: [...state.items, { Put: params }],
+    items: [...state.items, { Put: params as StrictPut }],
   });
 
 /**
@@ -34,7 +47,7 @@ const addUpdateItem =
   (state: TransactWriteState) =>
   (params: TransactUpdateParams): TransactWriteState => ({
     ...state,
-    items: [...state.items, { Update: params }],
+    items: [...state.items, { Update: params as StrictUpdate }],
   });
 
 /**
@@ -44,7 +57,7 @@ const addDeleteItem =
   (state: TransactWriteState) =>
   (params: TransactDeleteParams): TransactWriteState => ({
     ...state,
-    items: [...state.items, { Delete: params }],
+    items: [...state.items, { Delete: params as StrictDelete }],
   });
 
 /**
@@ -54,7 +67,7 @@ const addConditionCheckItem =
   (state: TransactWriteState) =>
   (params: TransactConditionCheckParams): TransactWriteState => ({
     ...state,
-    items: [...state.items, { ConditionCheck: params }],
+    items: [...state.items, { ConditionCheck: params as StrictConditionCheck }],
   });
 
 /**
