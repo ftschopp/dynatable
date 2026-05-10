@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-migrations [1.3.2](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.3.1...@ftschopp/dynatable-migrations@1.3.2) (2026-05-10)
+
+
+### Bug Fixes
+
+* **migrations:** unify tracker timestamps to ISO 8601; add --major/--minor/--patch flags to create ([#47](https://github.com/ftschopp/dynatable/issues/47)) ([24f9bea](https://github.com/ftschopp/dynatable/commit/24f9beac9b0f920561515a7bb86228f34ba67327)), closes [#17](https://github.com/ftschopp/dynatable/issues/17) [#17](https://github.com/ftschopp/dynatable/issues/17)
+
 ## @ftschopp/dynatable-migrations [1.3.1](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.3.0...@ftschopp/dynatable-migrations@1.3.1) (2026-05-10)
 
 
