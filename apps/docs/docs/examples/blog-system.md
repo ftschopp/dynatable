@@ -6,6 +6,86 @@ sidebar_position: 1
 
 A complete example of building a blog system with users, posts, comments, and tags using Dynatable.
 
+## Entity-Relationship Diagram (ER)
+
+> Logical model. Physical partition/sort keys (e.g. `USER#${username}`, `POST#${postId}`) live in the **Key Structure** table below.
+
+```mermaid
+erDiagram
+    USER ||--o{ POST    : "writes"
+    USER ||--o{ COMMENT : "writes"
+    POST ||--o{ COMMENT : "has"
+    POST ||--o{ TAG     : "is tagged with"
+
+    USER {
+        string username PK
+        string name
+        string email
+        string bio
+        string avatar
+    }
+    POST {
+        string username FK
+        string postId PK
+        string title
+        string content
+        boolean published
+        number views
+        number likes
+    }
+    COMMENT {
+        string postId FK
+        string commentId PK
+        string username FK
+        string content
+        number likes
+    }
+    TAG {
+        string postId   PK "partition; FK to POST"
+        string tag      PK "sort"
+        string username FK "denormalized FK to USER"
+    }
+```
+
+`TAG` is the join entity that materializes the N:M `Post ↔ tag` relationship: `postId` is the partition (FK to `POST`) and `tag` is the sort key. Its GSI1 swaps the two columns so you can query both "tags for a post" (primary index) and "posts for a tag" (GSI1).
+
+`POST` reuses the same GSI for a second access pattern — listing all published posts chronologically — by partitioning on `published` and sorting by the ULID `postId`.
+
+## Single Table Design
+
+### Key Structure
+
+| Entity Type | PK                  | SK                      | GSI1PK            | GSI1SK                          |
+| ----------- | ------------------- | ----------------------- | ----------------- | ------------------------------- |
+| User        | `USER#{username}`   | `USER#{username}`       | -                 | -                               |
+| Post        | `USER#{username}`   | `POST#{postId}`         | `POSTS#{published}` | `POST#{postId}`               |
+| Comment     | `POST#{postId}`     | `COMMENT#{commentId}`   | `USER#{username}` | `COMMENT#{commentId}`           |
+| Tag         | `POST#{postId}`     | `TAG#{tag}`             | `TAG#{tag}`       | `POST#{postId}`                 |
+
+The GSI in this example is named `gsi1`, with column names `GSI1PK` and `GSI1SK`.
+
+### Access Patterns
+
+1. **User**
+   - Get user by username: `GetItem` with PK=`USER#{username}`, SK=`USER#{username}`
+   - Create unique user: `PutItem` with `attribute_not_exists` condition
+
+2. **Posts**
+   - Create post: `PutItem` with PK=`USER#{username}`, SK=`POST#{postId}`
+   - Get post: `GetItem` with PK=`USER#{username}`, SK=`POST#{postId}`
+   - List user posts: `Query` with PK=`USER#{username}`, SK `begins_with` "POST#"
+   - List published posts (chronological): Query gsi1 with GSI1PK=`POSTS#true` (postId is a ULID, so the SK sorts by creation time)
+
+3. **Comments**
+   - Add comment: `PutItem` with PK=`POST#{postId}`, SK=`COMMENT#{commentId}`
+   - List comments on a post: `Query` with PK=`POST#{postId}`, SK `begins_with` "COMMENT#"
+   - List comments by user: Query gsi1 with GSI1PK=`USER#{username}`, GSI1SK `begins_with` "COMMENT#"
+
+4. **Tags**
+   - Tag a post: `PutItem` with PK=`POST#{postId}`, SK=`TAG#{tag}`
+   - List tags for a post: `Query` with PK=`POST#{postId}`, SK `begins_with` "TAG#"
+   - List posts for a tag: Query gsi1 with GSI1PK=`TAG#{tag}`, then `BatchGetItem` for post details
+
 ## Schema Design
 
 GSI key templates live on each model's `index:` field, not inside `attributes:`.
@@ -38,8 +118,6 @@ export const BlogSchema = {
         email: { type: String, required: true },
         bio: { type: String },
         avatar: { type: String },
-        followerCount: { type: Number, default: 0 },
-        followingCount: { type: Number, default: 0 },
       },
     },
 
@@ -49,9 +127,9 @@ export const BlogSchema = {
         SK: { type: String, value: 'POST#${postId}' },
       },
       index: {
-        // GSI for querying all posts by status
-        GSI1PK: { type: String, value: 'POST' },
-        GSI1SK: { type: String, value: 'STATUS#${published}#${postId}' },
+        // GSI partitions posts by `published`, sorted by ULID postId (chronological)
+        GSI1PK: { type: String, value: 'POSTS#${published}' },
+        GSI1SK: { type: String, value: 'POST#${postId}' },
       },
       attributes: {
         username: { type: String, required: true },
@@ -96,6 +174,8 @@ export const BlogSchema = {
       attributes: {
         postId: { type: String, required: true },
         tag: { type: String, required: true },
+        // Denormalized so getPostsByTag can BatchGet posts (Post needs username + postId)
+        username: { type: String, required: true },
       },
     },
   },
@@ -130,9 +210,6 @@ async function createUser(username: string, name: string, email: string) {
     username,
     name,
     email,
-    bio: '',
-    followerCount: 0,
-    followingCount: 0,
   })
     .ifNotExists()
     .execute();
@@ -153,7 +230,7 @@ async function getUserProfile(username: string) {
 
 // Usage
 const user = await getUserProfile('alice');
-console.log(user.name, user.bio);
+console.log(user?.name, user?.bio); // user is User | undefined
 ```
 
 ### Update User Profile
@@ -163,6 +240,10 @@ async function updateUserProfile(
   username: string,
   updates: { name?: string; bio?: string; avatar?: string }
 ) {
+  // DynamoDB rejects an UpdateItem with no UpdateExpression, so bail out
+  // when there's nothing to update.
+  if (!updates.name && !updates.bio && !updates.avatar) return;
+
   let query = table.entities.User.update({ username });
 
   if (updates.name) query = query.set('name', updates.name);
@@ -240,15 +321,17 @@ posts.forEach((post) => {
 
 ### Get All Published Posts
 
+:::caution
+The GSI partition is `POSTS#true` for every published post, so all reads land in a single partition. Fine for an example or a low-write blog — for a high-traffic feed, shard the partition (e.g. `POSTS#true#${shard}`) or denormalize a "feed" item collection.
+:::
+
 ```typescript
 async function getPublishedPosts(limit: number = 50) {
   return await table.entities.Post.query()
-    .where((attr, op) =>
-      op.and(op.eq(attr.GSI1PK, 'POST'), op.beginsWith(attr.GSI1SK, 'STATUS#true'))
-    )
+    .where((attr, op) => op.eq(attr.published, true))
     .useIndex('gsi1')
     .limit(limit)
-    .scanIndexForward(false)
+    .scanIndexForward(false) // Newest first (ULID postId)
     .execute();
 }
 
@@ -264,6 +347,8 @@ async function updatePost(
   postId: string,
   updates: { title?: string; content?: string; published?: boolean }
 ) {
+  if (!updates.title && !updates.content && updates.published === undefined) return;
+
   let query = table.entities.Post.update({ username, postId });
 
   if (updates.title) query = query.set('title', updates.title);
@@ -306,14 +391,13 @@ async function likePost(username: string, postId: string) {
 
 ```typescript
 async function deletePost(username: string, postId: string) {
+  // Note: comments and tags live under different partition keys
+  // (`POST#${postId}`). To clean them up, query each related model
+  // and delete the items in a transaction or batch as appropriate.
   return await table.entities.Post.delete({
     username,
     postId,
   }).execute();
-
-  // Note: comments and tags live under different partition keys.
-  // To clean them up, query each related model and delete the items
-  // in a transaction or batch as appropriate.
 }
 ```
 
@@ -382,9 +466,10 @@ async function likeComment(postId: string, commentId: string) {
 ### Add Tags to Post
 
 ```typescript
-async function addTagsToPost(postId: string, tags: string[]) {
+async function addTagsToPost(username: string, postId: string, tags: string[]) {
   const tagItems = tags.map((tag) => ({
     postId,
+    username, // denormalized so we can BatchGet posts by tag
     tag: tag.toLowerCase(),
   }));
 
@@ -392,7 +477,7 @@ async function addTagsToPost(postId: string, tags: string[]) {
 }
 
 // Usage
-await addTagsToPost('post123', ['typescript', 'dynamodb', 'tutorial']);
+await addTagsToPost('alice', 'post123', ['typescript', 'dynamodb', 'tutorial']);
 ```
 
 ### Get Post Tags
@@ -413,13 +498,21 @@ console.log(tags); // ['typescript', 'dynamodb', 'tutorial']
 
 ### Get Posts by Tag
 
+`Tag` records carry a denormalized `username` so we can `BatchGet` the actual `Post` items (the Post primary key is `username` + `postId`).
+
 ```typescript
 async function getPostsByTag(tag: string, limit: number = 20) {
-  return await table.entities.Tag.query()
+  const tagRecords = await table.entities.Tag.query()
     .where((attr, op) => op.eq(attr.tag, tag.toLowerCase()))
     .useIndex('gsi1')
     .limit(limit)
     .execute();
+
+  if (tagRecords.length === 0) return [];
+
+  return await table.entities.Post.batchGet(
+    tagRecords.map((t) => ({ username: t.username, postId: t.postId }))
+  ).execute();
 }
 
 // Usage
@@ -445,11 +538,8 @@ async function publishPostWithTags(
     published: true,
   }).execute();
 
-  // Add tags
-  await addTagsToPost(post.postId, tags);
-
-  // Increment user post count
-  await table.entities.User.update({ username }).add('postCount', 1).execute();
+  // Add tags (denormalizes username into each Tag record)
+  await addTagsToPost(username, post.postId, tags);
 
   return post;
 }
@@ -473,6 +563,8 @@ async function getPostWithComments(username: string, postId: string) {
     getPostTags(postId),
   ]);
 
+  if (!post) return undefined;
+
   return {
     ...post,
     comments,
@@ -482,20 +574,27 @@ async function getPostWithComments(username: string, postId: string) {
 
 // Usage
 const fullPost = await getPostWithComments('alice', 'post123');
-console.log(fullPost.title);
-console.log(`${fullPost.comments.length} comments`);
-console.log(`Tags: ${fullPost.tags.join(', ')}`);
+if (fullPost) {
+  console.log(fullPost.title);
+  console.log(`${fullPost.comments.length} comments`);
+  console.log(`Tags: ${fullPost.tags.join(', ')}`);
+}
 ```
 
 ### Get User Feed
 
+DynamoDB paginates with an opaque `LastEvaluatedKey`, not page numbers — pass the previous page's `nextPageToken` back to get the next page.
+
 ```typescript
-async function getUserFeed(username: string, page: number = 1, pageSize: number = 20) {
-  const result = await table.entities.Post.query()
+async function getUserFeed(username: string, pageSize: number = 20, pageToken?: any) {
+  let query = table.entities.Post.query()
     .where((attr, op) => op.eq(attr.username, username))
     .limit(pageSize)
-    .scanIndexForward(false)
-    .executeWithPagination();
+    .scanIndexForward(false);
+
+  if (pageToken) query = query.startFrom(pageToken);
+
+  const result = await query.executeWithPagination();
 
   return {
     posts: result.items,
@@ -529,9 +628,7 @@ async function searchPosts(keyword: string) {
 ```typescript
 async function getPaginatedPosts(limit: number = 20, lastKey?: any) {
   let query = table.entities.Post.query()
-    .where((attr, op) =>
-      op.and(op.eq(attr.GSI1PK, 'POST'), op.beginsWith(attr.GSI1SK, 'STATUS#true'))
-    )
+    .where((attr, op) => op.eq(attr.published, true))
     .useIndex('gsi1')
     .limit(limit)
     .scanIndexForward(false);
@@ -566,7 +663,7 @@ async function createPostSafely(username: string, title: string, content: string
     }).execute();
 
     return { success: true, post };
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to create post:', error);
     return { success: false, error: error.message };
   }
@@ -608,18 +705,35 @@ describe('Blog System', () => {
 });
 ```
 
-## Next Steps
+## Features Demonstrated
 
 This example demonstrates:
 
-- ✅ Single-table design
-- ✅ One-to-many relationships (User → Posts, Post → Comments)
-- ✅ Many-to-many relationships (Posts ↔ Tags)
-- ✅ GSI usage for alternative access patterns
-- ✅ Pagination
-- ✅ Atomic operations
-- ✅ Type safety throughout
+- ✅ **Single Table Design** — All entities in one table
+- ✅ **1:N relationships** — User → Posts, Post → Comments
+- ✅ **N:M relationships** — Posts ↔ Tags via the `Tag` join entity
+- ✅ **GSI usage** — Browse published posts, comments by user, posts by tag
+- ✅ **Denormalization** — `Tag.username` enables `BatchGet` of posts by tag
+- ✅ **Pagination** — Opaque `LastEvaluatedKey` tokens
+- ✅ **Auto-generated IDs** — ULID for posts and comments
+- ✅ **Automatic timestamps** — `createdAt`, `updatedAt`
+- ✅ **Atomic counters** — `views`, `likes`
+- ✅ **Type safety** — TypeScript end-to-end
 
-For more examples, see:
+## Next Steps
 
-- [Instagram Clone](./instagram-clone)
+To extend this example, consider:
+
+- Add a `Follow` entity for User ↔ User relationships (see Instagram clone)
+- Use a `TransactWrite` to publish a post and add tags atomically
+- Add a `published`/`draft` filter built on the existing GSI
+- Replace the keyword `scan` with a real search index (OpenSearch/Algolia)
+- Add soft-delete via a `deletedAt` attribute and a TTL
+
+## References
+
+- [Instagram Clone Example](./instagram-clone)
+- [Single Table Design Guide](../guides/single-table-design)
+- [Data Modeling Guide](../guides/data-modeling)
+- [Queries Guide](../guides/queries)
+- [Mutations Guide](../guides/mutations)
