@@ -49,9 +49,9 @@ describe('createPutBuilder', () => {
 
       expect(params.Item).toHaveProperty('createdAt');
       expect(params.Item).toHaveProperty('updatedAt');
-      expect(typeof params.Item!.createdAt).toBe('string');
-      expect(typeof params.Item!.updatedAt).toBe('string');
-      expect(params.Item!.createdAt).toBe(params.Item!.updatedAt);
+      expect(typeof params.Item?.createdAt).toBe('string');
+      expect(typeof params.Item?.updatedAt).toBe('string');
+      expect(params.Item?.createdAt).toBe(params.Item?.updatedAt);
     });
 
     it('should not add timestamps when enableTimestamps is false', () => {
@@ -70,9 +70,9 @@ describe('createPutBuilder', () => {
 
       const params = builder.dbParams();
 
-      expect(params.Item!.id).toBe('123');
-      expect(params.Item!.name).toBe('Test');
-      expect(params.Item!.value).toBe(42);
+      expect(params.Item?.id).toBe('123');
+      expect(params.Item?.name).toBe('Test');
+      expect(params.Item?.value).toBe(42);
     });
   });
 
