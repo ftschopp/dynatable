@@ -52,8 +52,8 @@ erDiagram
         string likeId "GSI1 sort key"
     }
     FOLLOW {
-        string followedUsername  PK,FK "partition"
-        string followingUsername PK,FK "sort"
+        string followedUsername  PK "partition; FK to USER"
+        string followingUsername PK "sort; FK to USER"
     }
 ```
 
