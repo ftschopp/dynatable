@@ -11,17 +11,31 @@ import styles from './index.module.css';
 
 const exampleCode = `import { Table } from '@ftschopp/dynatable-core';
 
-const table = new Table({
-  name: 'MyApp',
-  client: dynamoDBClient,
-  schema: {
-    models: {
-      User: {
-        primaryKey: { PK: 'USER#\${username}', SK: 'PROFILE' },
-        attributes: { username: 'string', email: 'string', age: 'number' },
+const schema = {
+  format: 'dynatable:1.0.0',
+  version: '1.0.0',
+  indexes: {
+    primary: { hash: 'PK', sort: 'SK' },
+  },
+  models: {
+    User: {
+      key: {
+        PK: { type: String, value: 'USER#\${username}' },
+        SK: { type: String, value: 'PROFILE' },
+      },
+      attributes: {
+        username: { type: String, required: true },
+        email: { type: String },
+        age: { type: Number },
       },
     },
   },
+} as const;
+
+const table = new Table({
+  name: 'MyApp',
+  client: dynamoDBClient,
+  schema,
 });
 
 // Fully typed operations

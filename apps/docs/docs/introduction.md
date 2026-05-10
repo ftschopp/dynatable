@@ -19,7 +19,7 @@ Complete TypeScript type inference from your schema definitions. Get autocomplet
 
 ```typescript
 const user = await table.entities.User.get({ username: 'alice' }).execute();
-//    ^? User: { username: string, name: string, email: string, ... }
+//    ^? User | undefined — fully typed from your schema
 ```
 
 #### Functional & Immutable
@@ -30,22 +30,22 @@ Immutable builder API that prevents side effects and makes your code more predic
 const baseQuery = table.entities.Post.query().where((attr, op) => op.eq(attr.username, 'alice'));
 
 // Create variations without mutating the original
-const recentPosts = baseQuery.limit(10).scanIndexForward(false);
-const allPosts = baseQuery.execute();
+const recentPosts = await baseQuery.limit(10).scanIndexForward(false).execute();
+const allPosts = await baseQuery.execute();
 ```
 
 #### Runtime Validation
 
-Automatic Zod validation enforces your declared types and required fields at runtime:
+`put()` and `batchWrite()` run automatic Zod validation, enforcing your declared types and required fields at runtime:
 
 ```typescript
 await table.entities.User.put({
   username: 'alice',
-  age: '25', // Error: Expected number, got string
+  age: '25', // throws ZodError: Expected number, got string
 }).execute();
 ```
 
-For richer rules (email format, length, regex…), validate inputs with your own Zod schemas before calling `.put()` / `.update()`.
+`update()` relies on TypeScript for type safety and does **not** run Zod at runtime. For richer rules (email format, length, regex…), validate inputs with your own Zod schemas before calling `.put()` / `.update()`.
 
 #### Developer Experience First
 
@@ -112,8 +112,17 @@ Your schema is the source of truth. Types flow automatically from your schema de
 
 ```typescript
 const schema = {
+  format: 'dynatable:1.0.0',
+  version: '1.0.0',
+  indexes: {
+    primary: { hash: 'PK', sort: 'SK' },
+  },
   models: {
     User: {
+      key: {
+        PK: { type: String, value: 'USER#${username}' },
+        SK: { type: String, value: 'USER#${username}' },
+      },
       attributes: {
         username: { type: String, required: true },
         email: { type: String, required: true },
@@ -124,8 +133,8 @@ const schema = {
 
 // TypeScript knows exactly what fields exist
 const user = await table.entities.User.get({ username: 'alice' }).execute();
-console.log(user.email); // ✅ Type-safe
-console.log(user.invalid); // ❌ TypeScript error
+console.log(user?.email); // ✅ Type-safe
+console.log(user?.invalid); // ❌ TypeScript error
 ```
 
 ## What's Next?

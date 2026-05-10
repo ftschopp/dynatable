@@ -20,21 +20,6 @@ Install Dynatable using your preferred package manager:
 npm install @ftschopp/dynatable-core
 ```
 
-## Install AWS SDK
-
-Dynatable requires the AWS SDK v3 for DynamoDB:
-
-```bash npm2yarn
-npm install @aws-sdk/client-dynamodb @aws-sdk/lib-dynamodb
-```
-
-## Install Zod (Optional but Recommended)
-
-Dynatable uses Zod for runtime validation. It's automatically included as a dependency:
-
-```bash npm2yarn
-npm install zod
-```
 
 ## Verify Installation
 
@@ -47,10 +32,11 @@ import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 console.log('Dynatable installed successfully!');
 ```
 
-Run the test:
+Run the test (Node 22+ supports TypeScript natively via `--experimental-strip-types`; `tsx` is a popular alternative):
 
 ```bash
-npx ts-node test-dynatable.ts
+node --experimental-strip-types test-dynatable.ts
+# or: npx tsx test-dynatable.ts
 ```
 
 ## AWS Configuration
@@ -71,7 +57,7 @@ Configure your client to use the local endpoint:
 
 ```typescript
 const client = new DynamoDBClient({
-  region: 'local',
+  region: 'us-east-1',
   endpoint: 'http://localhost:8000',
   credentials: {
     accessKeyId: 'dummy',
@@ -98,6 +84,12 @@ export AWS_REGION="us-east-1"
 [default]
 aws_access_key_id = your-access-key
 aws_secret_access_key = your-secret-key
+```
+
+**AWS Config File** (`~/.aws/config`) — region goes here, not in `credentials`:
+
+```ini
+[default]
 region = us-east-1
 ```
 
@@ -125,15 +117,15 @@ Ensure your `tsconfig.json` has these settings for optimal type inference:
 ```json title="tsconfig.json"
 {
   "compilerOptions": {
-    "target": "ES2020",
-    "module": "commonjs",
-    "lib": ["ES2020"],
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "moduleResolution": "node"
+    "resolveJsonModule": true
   }
 }
 ```

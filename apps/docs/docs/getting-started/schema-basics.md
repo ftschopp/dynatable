@@ -27,7 +27,7 @@ const schema = {
 ```
 
 :::warning Important
-Always add `as const` at the end of your schema for proper TypeScript type inference.
+Always end your schema with `as const satisfies SchemaDefinition`. The `as const` is required so that key-template strings like `"USER#${username}"` keep their literal type — without it they widen to `string` and Dynatable can no longer infer the variables your keys depend on. The `satisfies` clause gives you better error messages without losing the literal types.
 :::
 
 ## Indexes
@@ -47,11 +47,11 @@ indexes: {
 }
 ```
 
-The `hash` and `sort` strings are the actual DynamoDB attribute names used for the index. They must match the keys you declare on each model under `key:` (and `index:` for GSIs).
+The `hash` and `sort` strings are the actual DynamoDB column names used for the index. Each model's `key:` object always uses the property names `PK` and `SK` — those are fixed by Dynatable. The strings in `indexes` are simply the underlying column names those properties get written to in DynamoDB. For GSIs, the `index:` object on each model uses property names matching the GSI's `hash`/`sort` strings (e.g. `GSI1PK` / `GSI1SK`).
 
 ### Primary Index
 
-Every table requires a primary index. The keys are uppercase by convention and **must** be named `PK` and `SK` on each model:
+Every table requires a primary index. The model `key:` object always uses the property names `PK` and `SK` (Dynatable hardcodes these); the `hash`/`sort` strings under `indexes.primary` are the DynamoDB column names those properties map to:
 
 ```typescript
 indexes: {
@@ -226,7 +226,7 @@ isActive: {
 
 ```typescript
 birthDate: {
-  type: Date;
+  type: Date,
 }
 ```
 
@@ -354,7 +354,7 @@ Automatically manage `createdAt` and `updatedAt`. When enabled, both fields are 
 
 ```typescript
 params: {
-  timestamps: true;
+  timestamps: true,
 }
 
 // When enabled, all entities get:
