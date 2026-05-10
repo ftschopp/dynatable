@@ -1,8 +1,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+import { createRequire } from 'module';
 import { Migration, MigrationFile } from '../types';
 import { compareSemver } from './semver';
+
+const nodeRequire = createRequire(__filename);
 
 /**
  * Map a require/import failure to a human-readable category. The same
@@ -42,7 +45,7 @@ export const calculateChecksum = (filePath: string): string => {
  * runtime graph until a `.ts` migration is actually loaded, so JS-only
  * users never hit this path.
  */
-const registerTsNode = (): void => {
+const registerTsNode = async (): Promise<void> => {
   try {
     // Check if ts-node is already registered
     const tsNodeSymbol = Symbol.for('ts-node.register.instance');
@@ -50,7 +53,8 @@ const registerTsNode = (): void => {
       return; // Already registered
     }
 
-    require('ts-node').register({
+    const tsNode = await import('ts-node');
+    tsNode.register({
       transpileOnly: true,
       skipProject: true, // Don't use project tsconfig
       compilerOptions: {
@@ -123,11 +127,11 @@ const loadMigration = async (filePath: string): Promise<MigrationFile | null> =>
 
   const module = await (absolutePath.endsWith('.ts')
     ? (async () => {
-        registerTsNode();
+        await registerTsNode();
         // Clear require cache to reload file
-        delete require.cache[absolutePath];
+        delete nodeRequire.cache[absolutePath];
         try {
-          return require(absolutePath);
+          return nodeRequire(absolutePath);
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
           throw new Error(

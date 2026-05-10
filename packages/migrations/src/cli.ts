@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import { createRequire } from 'module';
 import { loadConfig } from './core/config';
 import { createMigration } from './commands/create';
 import { runMigrations } from './commands/up';
@@ -10,8 +11,9 @@ import { initProject } from './commands/init';
 import { forceUnlock } from './commands/unlock';
 import { parsePositiveInt } from './cli-utils';
 
-// Read version from package.json
-const packageJson = require('../package.json');
+// Read version from package.json — `createRequire` keeps it out of rootDir
+// (so we don't need `resolveJsonModule` to reach outside src/).
+const packageJson = createRequire(__filename)('../package.json');
 
 const runCommand = async (fn: () => Promise<void>): Promise<void> => {
   try {

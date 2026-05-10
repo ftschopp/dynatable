@@ -240,14 +240,8 @@ async function updateUserProfile(
   username: string,
   updates: { name?: string; bio?: string; avatar?: string }
 ) {
-  // Filter out undefined fields so DynamoDB never sees an empty UpdateExpression.
-  const fields = Object.fromEntries(
-    Object.entries(updates).filter(([, value]) => value !== undefined)
-  );
-  if (Object.keys(fields).length === 0) return;
-
   return await table.entities.User.update({ username })
-    .set(fields)
+    .set(updates)
     .returning('ALL_NEW')
     .execute();
 }
@@ -346,13 +340,8 @@ async function updatePost(
   postId: string,
   updates: { title?: string; content?: string; published?: boolean }
 ) {
-  const fields = Object.fromEntries(
-    Object.entries(updates).filter(([, value]) => value !== undefined)
-  );
-  if (Object.keys(fields).length === 0) return;
-
   return await table.entities.Post.update({ username, postId })
-    .set(fields)
+    .set(updates)
     .returning('ALL_NEW')
     .execute();
 }
