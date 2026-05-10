@@ -10,54 +10,53 @@ A complete example of an Instagram clone with users, photos, likes, comments, an
 
 > Logical model. Physical partition/sort keys (e.g. `USER#${username}`, `PHOTO#${photoId}`) live in the **Key Structure** table below.
 
-```
-┌────────────────────┐
-│        User        │
-├────────────────────┤
-│ username        PK │
-│ name               │
-│ followerCount      │
-│ followingCount     │
-└──────────┬─────────┘
-           │
-           │ 1:N (a User has many Photos and Stories)
-           │
-   ┌───────┴────────┐
-   ▼                ▼
-┌────────────────────┐    ┌────────────────────┐
-│       Photo        │    │       Story        │
-├────────────────────┤    ├────────────────────┤
-│ username       FK  │    │ username       FK  │
-│ photoId        PK  │    │ storyId        PK  │
-│ url                │    │ frames []          │
-│ caption            │    │ location {}        │
-│ likesCount         │    │ viewCount          │
-│ commentCount       │    └────────────────────┘
-└─────────┬──────────┘
-          │
-          │ 1:N (a Photo has many Comments and Likes)
-          │
-   ┌──────┴───────┐
-   ▼              ▼
-┌────────────────────────┐  ┌──────────────────────────┐
-│        Comment         │  │           Like           │
-├────────────────────────┤  ├──────────────────────────┤
-│ photoId            FK  │  │ photoId              FK  │
-│ commentId          PK  │  │ likingUsername       PK  │
-│ commentingUsername FK  │  │ likeId   (GSI1 sort)     │
-│ content                │  └──────────────────────────┘
-└────────────────────────┘
+```mermaid
+erDiagram
+    USER   ||--o{ PHOTO   : "posts"
+    USER   ||--o{ STORY   : "posts"
+    PHOTO  ||--o{ COMMENT : "has"
+    PHOTO  ||--o{ LIKE    : "has"
+    USER   }o--o{ USER    : "follows (via Follow)"
 
-User ↔ User    N:M (via Follow)
-
-┌──────────────────────────────────────┐
-│                Follow                │
-├──────────────────────────────────────┤
-│ followedUsername                PK   │
-│ followingUsername               SK   │
-│ (GSI1 swaps PK/SK for inverse)       │
-└──────────────────────────────────────┘
+    USER {
+        string username PK
+        string name
+        number followerCount
+        number followingCount
+    }
+    PHOTO {
+        string username FK
+        string photoId PK
+        string url
+        string caption
+        number likesCount
+        number commentCount
+    }
+    STORY {
+        string username FK
+        string storyId PK
+        array  frames
+        object location
+        number viewCount
+    }
+    COMMENT {
+        string photoId FK
+        string commentId PK
+        string commentingUsername FK
+        string content
+    }
+    LIKE {
+        string photoId FK
+        string likingUsername PK
+        string likeId "GSI1 sort key"
+    }
+    FOLLOW {
+        string followedUsername PK
+        string followingUsername SK
+    }
 ```
+
+`FOLLOW` represents the N:M `User ↔ User` relationship; its GSI1 swaps `PK`/`SK` so you can query both "who follows X" (primary) and "who X follows" (GSI1).
 
 ## Single Table Design
 
