@@ -4,7 +4,7 @@ import { UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { buildExpression, AttrBuilder, Condition, createOpBuilder, AttrRef } from '../shared';
 import { UpdateBuilder, UpdateAction, IndexContext } from './types';
 import { DynamoDBLogger } from '../../utils/dynamodb-logger';
-import { computeIndexUpdates } from '../../utils/model-utils';
+import { computeIndexUpdates, extractTemplateVars } from '../../utils/model-utils';
 
 /**
  * Pull the LHS attribute name out of a SET-action expression like
@@ -14,6 +14,18 @@ import { computeIndexUpdates } from '../../utils/model-utils';
 function extractAttrName(action: UpdateAction): string | undefined {
   const m = action.expression.match(/^\s*#([A-Za-z0-9_]+)\s*=/);
   return m?.[1];
+}
+
+/**
+ * Pull the attribute name from any update action (set / remove / add / delete).
+ * Each action emitted by this builder carries exactly one entry in `names`
+ * mapping `#<attr>` → `<attr>`, so the value side of that map is the source
+ * of truth regardless of the surrounding expression syntax.
+ */
+function actionAttrName(action: UpdateAction): string | undefined {
+  if (!action.names) return undefined;
+  const values = Object.values(action.names);
+  return values[0];
 }
 
 /**
@@ -240,6 +252,75 @@ export function createUpdateBuilder<Model>(
       // key vars + the .set() payload, we throw — recomputing from the
       // existing item would require an extra read the builder won't do.
       if (indexContext) {
+        // Collect the attribute name targeted by every update action,
+        // grouped by op. `setInputs` carries the .set() payload (already
+        // structured) — for remove/add/delete we read from the action's
+        // attribute-name map.
+        const setFields = Object.keys(setInputs);
+        const removeFields = updateActions.remove
+          .map(actionAttrName)
+          .filter((n): n is string => !!n);
+        const addFields = updateActions.add
+          .map(actionAttrName)
+          .filter((n): n is string => !!n);
+        const deleteFields = updateActions.delete
+          .map(actionAttrName)
+          .filter((n): n is string => !!n);
+
+        // Guard 1: primary-key template fields are immutable in DynamoDB.
+        // The Key on the UpdateItem request fixes the row to operate on; if
+        // the user changes a field that participates in the PK/SK template,
+        // the row's PK doesn't move (DynamoDB doesn't allow that) but the
+        // attribute does — leaving an inconsistent row whose PK encodes the
+        // old value. Catch this on every op (.set / .remove / .add / .delete)
+        // before it leaves the process.
+        const primaryKeyTemplateVars = new Set<string>();
+        for (const keyDef of Object.values(indexContext.model.key)) {
+          for (const v of extractTemplateVars(keyDef.value)) {
+            primaryKeyTemplateVars.add(v);
+          }
+        }
+        const allTouched = [...setFields, ...removeFields, ...addFields, ...deleteFields];
+        const pkConflicts = [
+          ...new Set(allTouched.filter((f) => primaryKeyTemplateVars.has(f))),
+        ];
+        if (pkConflicts.length > 0) {
+          throw new Error(
+            `Cannot update field(s) [${pkConflicts.join(', ')}] — they participate ` +
+              `in the primary key template, which is immutable in DynamoDB. To ` +
+              `"rename" a primary-key value, delete the old item and put a new one ` +
+              `(ideally inside a transactWrite for atomicity).`
+          );
+        }
+
+        // Guard 2: .add() / .remove() / .delete() against a field used in a
+        // SECONDARY-index template. The recompute path needs an explicit new
+        // value to resolve the template — ADD increments without exposing
+        // the new value, REMOVE strips the field entirely, and DELETE
+        // mutates a Set without naming a scalar. Switching to .set(field,
+        // newValue) lets the recompute path handle it correctly.
+        if (indexContext.model.index) {
+          const indexTemplateVars = new Set<string>();
+          for (const indexDef of Object.values(indexContext.model.index)) {
+            for (const v of extractTemplateVars(indexDef.value)) {
+              indexTemplateVars.add(v);
+            }
+          }
+          const nonSetTouches = [...removeFields, ...addFields, ...deleteFields];
+          const gsiConflicts = [
+            ...new Set(nonSetTouches.filter((f) => indexTemplateVars.has(f))),
+          ];
+          if (gsiConflicts.length > 0) {
+            throw new Error(
+              `Cannot use .add() / .remove() / .delete() on field(s) ` +
+                `[${gsiConflicts.join(', ')}] — they participate in a ` +
+                `secondary-index template, and the affected index key cannot be ` +
+                `recomputed without an explicit new value. Use .set(field, ` +
+                `newValue) instead so the index key is recomputed atomically.`
+            );
+          }
+        }
+
         const { actions: idxActions, missing } = computeIndexUpdates(
           indexContext.model,
           indexContext.keyVars,
