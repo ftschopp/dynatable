@@ -39,9 +39,27 @@ program
   .description('Create a new migration file')
   .option('-c, --config <path>', 'Path to config file')
   .option('-t, --type <type>', 'Version bump type: major, minor, or patch (default: patch)')
+  .option('--major', 'Shortcut for --type major')
+  .option('--minor', 'Shortcut for --type minor')
+  .option('--patch', 'Shortcut for --type patch')
   .option('-e, --explicit <version>', 'Explicit version (e.g., 2.0.0)')
   .action(async (name: string, options) => {
     try {
+      // Resolve a single bump type from --type and the boolean shortcuts.
+      // Reject if more than one shortcut/type was passed so the user notices
+      // their own contradiction instead of getting whichever one wins.
+      const shortcutFlags = (['major', 'minor', 'patch'] as const).filter((f) => options[f]);
+      const sources = [
+        ...(options.type ? [options.type] : []),
+        ...shortcutFlags,
+      ];
+      if (sources.length > 1) {
+        throw new Error(
+          `Conflicting bump options: ${sources.join(', ')}. Pass only one of --type, --major, --minor, --patch.`
+        );
+      }
+      const bumpType = sources[0];
+
       let migrationsDir = './migrations';
 
       // Try to load config to get migrations directory
@@ -52,7 +70,7 @@ program
         // If config doesn't exist, use default
       }
 
-      await createMigration(name, migrationsDir, options.type, options.explicit);
+      await createMigration(name, migrationsDir, bumpType, options.explicit);
     } catch (error: any) {
       console.error(`Error: ${error.message}`);
       process.exit(1);
