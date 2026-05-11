@@ -173,12 +173,12 @@ Migrations use semver for version numbers:
 You can also use the migration runner in code:
 
 ```typescript
-import { MigrationRunner, loadConfig, createDynamoDBClient } from '@ftschopp/dynatable-migrations';
+import { createMigrationRunner, loadConfig, createDynamoDBClient } from '@ftschopp/dynatable-migrations';
 
 async function runMigrations() {
   const config = await loadConfig();
   const client = createDynamoDBClient(config);
-  const runner = new MigrationRunner(client, config);
+  const runner = createMigrationRunner(client, config);
 
   // Get status
   const status = await runner.status();

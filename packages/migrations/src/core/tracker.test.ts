@@ -10,7 +10,7 @@ import {
   TransactWriteCommand,
 } from '@aws-sdk/lib-dynamodb';
 import { mockClient } from 'aws-sdk-client-mock';
-import { DynamoDBMigrationTracker, DEFAULT_LOCK_TTL_SECONDS } from './tracker';
+import { createMigrationTracker, DEFAULT_LOCK_TTL_SECONDS } from './tracker';
 import type { MigrationConfig } from '../types';
 
 const ddbMock = mockClient(DynamoDBDocumentClient);
@@ -22,14 +22,14 @@ const baseConfig: MigrationConfig = {
 
 function makeTracker(config: Partial<MigrationConfig> = {}) {
   const client = DynamoDBDocumentClient.from(new DynamoDBClient({ region: 'us-east-1' }));
-  return new DynamoDBMigrationTracker(client, { ...baseConfig, ...config });
+  return createMigrationTracker(client, { ...baseConfig, ...config });
 }
 
 beforeEach(() => {
   ddbMock.reset();
 });
 
-describe('DynamoDBMigrationTracker - lock TTL', () => {
+describe('migrationTracker - lock TTL', () => {
   test('uses the default 5-minute TTL when none is configured', () => {
     const tracker = makeTracker();
     expect(tracker.lockTtlSeconds).toBe(DEFAULT_LOCK_TTL_SECONDS);
@@ -41,7 +41,7 @@ describe('DynamoDBMigrationTracker - lock TTL', () => {
   });
 });
 
-describe('DynamoDBMigrationTracker - acquireLock', () => {
+describe('migrationTracker - acquireLock', () => {
   test('uses <= for the expiry boundary so simultaneous-ms expiries are takeable', async () => {
     ddbMock.on(PutCommand).resolves({});
     const tracker = makeTracker();
@@ -65,7 +65,7 @@ describe('DynamoDBMigrationTracker - acquireLock', () => {
   });
 });
 
-describe('DynamoDBMigrationTracker - refreshLock', () => {
+describe('migrationTracker - refreshLock', () => {
   test('extends the lock with a ConditionExpression on the current lockId', async () => {
     ddbMock.on(PutCommand).resolves({});
     ddbMock.on(UpdateCommand).resolves({});
@@ -108,7 +108,7 @@ describe('DynamoDBMigrationTracker - refreshLock', () => {
   });
 });
 
-describe('DynamoDBMigrationTracker - tracker writes are gated by lock ownership', () => {
+describe('migrationTracker - tracker writes are gated by lock ownership', () => {
   test('markAsApplied (new record path) emits a ConditionCheck on the lock row', async () => {
     ddbMock.on(PutCommand).resolves({}); // acquireLock
     ddbMock.on(TransactWriteCommand).resolves({});
@@ -155,7 +155,7 @@ describe('DynamoDBMigrationTracker - tracker writes are gated by lock ownership'
   });
 });
 
-describe('DynamoDBMigrationTracker - markAsApplied idempotency (#10)', () => {
+describe('migrationTracker - markAsApplied idempotency (#10)', () => {
   function cancelledTransactError(reasons: Array<{ Code?: string }>) {
     return Object.assign(new Error('Transaction cancelled'), {
       name: 'TransactionCanceledException',
@@ -286,7 +286,7 @@ describe('DynamoDBMigrationTracker - markAsApplied idempotency (#10)', () => {
   });
 });
 
-describe('DynamoDBMigrationTracker - initialize', () => {
+describe('migrationTracker - initialize', () => {
   test('writes the CURRENT pointer with attribute_not_exists(PK) so concurrent first-runs do not double-write', async () => {
     ddbMock.on(GetCommand).resolves({ Item: undefined });
     ddbMock.on(PutCommand).resolves({});
@@ -336,7 +336,7 @@ describe('DynamoDBMigrationTracker - initialize', () => {
   });
 });
 
-describe('DynamoDBMigrationTracker - releaseLock', () => {
+describe('migrationTracker - releaseLock', () => {
   test('issues a DeleteCommand on the lock row gated by the current lockId', async () => {
     ddbMock.on(PutCommand).resolves({}); // acquireLock
     ddbMock.on(DeleteCommand).resolves({});
@@ -402,7 +402,7 @@ describe('DynamoDBMigrationTracker - releaseLock', () => {
   });
 });
 
-describe('DynamoDBMigrationTracker - markAsRolledBack', () => {
+describe('migrationTracker - markAsRolledBack', () => {
   test('updates the migration row to status=rolled_back and points the current pointer at the previous applied version', async () => {
     ddbMock.on(PutCommand).resolves({}); // acquireLock
     ddbMock.on(TransactWriteCommand).resolves({});
@@ -504,7 +504,7 @@ describe('DynamoDBMigrationTracker - markAsRolledBack', () => {
   });
 });
 
-describe('DynamoDBMigrationTracker - markAsApplied happy path', () => {
+describe('migrationTracker - markAsApplied happy path', () => {
   test('writes a Put with version, name, status=applied, checksum, and bumps CURRENT pointer atomically', async () => {
     ddbMock.on(PutCommand).resolves({}); // acquireLock
     ddbMock.on(GetCommand).resolves({ Item: undefined }); // no existing record → Put branch

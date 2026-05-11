@@ -14,84 +14,114 @@ import { MigrationAlreadyAppliedError, MigrationLockLostError } from './errors';
 /** Default lock TTL in seconds. Configurable via MigrationConfig.lockTtlSeconds. */
 export const DEFAULT_LOCK_TTL_SECONDS = 300; // 5 minutes
 
-export class DynamoDBMigrationTracker implements MigrationTracker {
-  private client: DynamoDBDocumentClient;
-  private tableName: string;
-  private trackingPrefix: string;
-  private gsi1Name: string;
-  private lockId: string | null = null;
-  /** TTL for newly-acquired or refreshed locks. */
-  public readonly lockTtlSeconds: number;
+export interface MigrationTrackerHandle extends MigrationTracker {
+  readonly lockTtlSeconds: number;
+  acquireLock(): Promise<boolean>;
+  refreshLock(): Promise<void>;
+  releaseLock(): Promise<void>;
+  initialize(): Promise<void>;
+  getAppliedMigrations(): Promise<MigrationRecord[]>;
+  getCurrentVersion(): Promise<string | null>;
+  markAsApplied(
+    version: string,
+    name: string,
+    schemaDefinition?: Record<string, any>,
+    schemaChanges?: SchemaChange[],
+    checksum?: string
+  ): Promise<void>;
+  markAsRolledBack(version: string, previousVersion?: string): Promise<void>;
+  markAsFailed(version: string, error: string): Promise<void>;
+  recordSchemaChange(change: SchemaChange): Promise<void>;
+  getMigration(version: string): Promise<MigrationRecord | null>;
+  isApplied(version: string): Promise<boolean>;
+}
 
-  constructor(client: DynamoDBDocumentClient, config: MigrationConfig) {
-    this.client = client;
-    this.tableName = config.tableName;
-    this.trackingPrefix = config.trackingPrefix || '_SCHEMA#VERSION';
-    this.gsi1Name = config.gsi1Name || 'GSI1';
-    this.lockTtlSeconds = config.lockTtlSeconds ?? DEFAULT_LOCK_TTL_SECONDS;
-  }
+/**
+ * Create a DynamoDB-backed migration tracker.
+ *
+ * The tracker carries one piece of genuinely mutable state: the current
+ * lock id, set by `acquireLock()` and cleared by `releaseLock()`. Everything
+ * else is derived from the config or read from DynamoDB on demand.
+ */
+export const createMigrationTracker = (
+  client: DynamoDBDocumentClient,
+  config: MigrationConfig
+): MigrationTrackerHandle => {
+  const tableName = config.tableName;
+  const trackingPrefix = config.trackingPrefix || '_SCHEMA#VERSION';
+  const lockTtlSeconds = config.lockTtlSeconds ?? DEFAULT_LOCK_TTL_SECONDS;
 
-  private get lockKey() {
-    return {
-      PK: `${this.trackingPrefix}#LOCK`,
-      SK: `${this.trackingPrefix}#LOCK`,
-    };
-  }
+  let lockId: string | null = null;
+
+  const lockKey = {
+    PK: `${trackingPrefix}#LOCK`,
+    SK: `${trackingPrefix}#LOCK`,
+  };
 
   /** Throws if there is no active lock. Call before any tracker write. */
-  private requireLock(): void {
-    if (!this.lockId) {
+  const requireLock = (): void => {
+    if (!lockId) {
       throw new Error(
         'Tracker has no active lock; refusing to issue tracker mutations. ' +
           'Call acquireLock() first.'
       );
     }
-  }
+  };
 
   /** Builds a TransactWrite ConditionCheck that asserts we still own the lock. */
-  private lockOwnershipCheck() {
-    this.requireLock();
+  const lockOwnershipCheck = () => {
+    requireLock();
     return {
       ConditionCheck: {
-        TableName: this.tableName,
-        Key: this.lockKey,
+        TableName: tableName,
+        Key: lockKey,
         ConditionExpression: 'lockId = :lockId',
-        ExpressionAttributeValues: {
-          ':lockId': this.lockId,
-        },
+        ExpressionAttributeValues: { ':lockId': lockId },
       },
     };
-  }
+  };
 
-  async initialize(): Promise<void> {
-    // Check if current version pointer exists, if not create it
-    const current = await this.getCurrentVersion();
-    if (!current) {
-      // Create initial version pointer. The condition prevents two
-      // concurrent first-run inits from each writing the row — without
-      // it, both reads return null, both Puts succeed, and the second
-      // silently overwrites the first.
-      try {
-        await this.client.send(
-          new PutCommand({
-            TableName: this.tableName,
-            Item: {
-              PK: `${this.trackingPrefix}#CURRENT`,
-              SK: `${this.trackingPrefix}#CURRENT`,
-              GSI1PK: 'SCHEMA#CURRENT',
-              GSI1SK: 'v0000',
-              currentVersion: 'v0000',
-              updatedAt: new Date().toISOString(),
-            },
-            ConditionExpression: 'attribute_not_exists(PK)',
-          })
-        );
-      } catch (err: any) {
-        // Another worker initialized first — that's the desired post-state.
-        if (err?.name !== 'ConditionalCheckFailedException') throw err;
-      }
+  const getCurrentVersion = async (): Promise<string | null> => {
+    const result = await client.send(
+      new GetCommand({
+        TableName: tableName,
+        Key: {
+          PK: `${trackingPrefix}#CURRENT`,
+          SK: `${trackingPrefix}#CURRENT`,
+        },
+      })
+    );
+    return result.Item?.currentVersion || null;
+  };
+
+  const initialize = async (): Promise<void> => {
+    const current = await getCurrentVersion();
+    if (current) return;
+
+    // Create initial version pointer. The condition prevents two
+    // concurrent first-run inits from each writing the row — without
+    // it, both reads return null, both Puts succeed, and the second
+    // silently overwrites the first.
+    try {
+      await client.send(
+        new PutCommand({
+          TableName: tableName,
+          Item: {
+            PK: `${trackingPrefix}#CURRENT`,
+            SK: `${trackingPrefix}#CURRENT`,
+            GSI1PK: 'SCHEMA#CURRENT',
+            GSI1SK: 'v0000',
+            currentVersion: 'v0000',
+            updatedAt: new Date().toISOString(),
+          },
+          ConditionExpression: 'attribute_not_exists(PK)',
+        })
+      );
+    } catch (err: any) {
+      // Another worker initialized first — that's the desired post-state.
+      if (err?.name !== 'ConditionalCheckFailedException') throw err;
     }
-  }
+  };
 
   /**
    * Acquire a distributed lock to prevent concurrent migrations.
@@ -101,99 +131,71 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
    * `rolledBackAt`, `acquiredAt`). ISO 8601 is lexicographically ordered the
    * same way it's chronologically ordered, so the `<=` condition still
    * compares correctly.
-   *
-   * **Upgrade note:** earlier versions stored `expiresAt` as a number
-   * (millis). A stale numeric lock written by an older client cannot be
-   * compared against the new ISO `:now` value (DynamoDB rejects mixed-type
-   * comparisons), so an in-flight numeric lock will block new acquisitions
-   * until cleared via `dynatable-migrate unlock --force`.
    */
-  async acquireLock(): Promise<boolean> {
+  const acquireLock = async (): Promise<boolean> => {
     const now = Date.now();
     const nowIso = new Date(now).toISOString();
-    const expiresAtIso = new Date(now + this.lockTtlSeconds * 1000).toISOString();
-    this.lockId = `lock-${now}-${Math.random().toString(36).substring(7)}`;
+    const expiresAtIso = new Date(now + lockTtlSeconds * 1000).toISOString();
+    const newLockId = `lock-${now}-${Math.random().toString(36).substring(7)}`;
+    lockId = newLockId;
 
     try {
-      await this.client.send(
+      await client.send(
         new PutCommand({
-          TableName: this.tableName,
+          TableName: tableName,
           Item: {
-            ...this.lockKey,
-            lockId: this.lockId,
+            ...lockKey,
+            lockId: newLockId,
             acquiredAt: nowIso,
             expiresAt: expiresAtIso,
           },
           // Only succeed if lock doesn't exist or has expired. The `<=`
           // covers the boundary where two clocks read the exact ms.
           ConditionExpression: 'attribute_not_exists(PK) OR expiresAt <= :now',
-          ExpressionAttributeValues: {
-            ':now': nowIso,
-          },
+          ExpressionAttributeValues: { ':now': nowIso },
         })
       );
       return true;
     } catch (error: any) {
       if (error.name === 'ConditionalCheckFailedException') {
-        this.lockId = null;
+        lockId = null;
         return false;
       }
       throw error;
     }
-  }
+  };
 
-  /**
-   * Extend the lock's expiration by another `lockTtlSeconds`. Throws
-   * `ConditionalCheckFailedException` if another worker has already taken
-   * the lock — callers should treat that as "we lost the race; stop
-   * making writes". Silent no-op if no lock is currently held.
-   */
-  async refreshLock(): Promise<void> {
-    if (!this.lockId) return;
-
-    const newExpiresAtIso = new Date(Date.now() + this.lockTtlSeconds * 1000).toISOString();
-
-    await this.client.send(
+  const refreshLock = async (): Promise<void> => {
+    if (!lockId) return;
+    const newExpiresAtIso = new Date(Date.now() + lockTtlSeconds * 1000).toISOString();
+    await client.send(
       new UpdateCommand({
-        TableName: this.tableName,
-        Key: this.lockKey,
+        TableName: tableName,
+        Key: lockKey,
         UpdateExpression: 'SET expiresAt = :exp',
         ConditionExpression: 'lockId = :lockId',
-        ExpressionAttributeValues: {
-          ':exp': newExpiresAtIso,
-          ':lockId': this.lockId,
-        },
+        ExpressionAttributeValues: { ':exp': newExpiresAtIso, ':lockId': lockId },
       })
     );
-  }
+  };
 
-  /**
-   * Release the distributed lock
-   */
-  async releaseLock(): Promise<void> {
-    if (!this.lockId) return;
-
+  const releaseLock = async (): Promise<void> => {
+    if (!lockId) return;
     try {
-      await this.client.send(
+      await client.send(
         new DeleteCommand({
-          TableName: this.tableName,
-          Key: this.lockKey,
-          // Only delete if we own the lock
+          TableName: tableName,
+          Key: lockKey,
           ConditionExpression: 'lockId = :lockId',
-          ExpressionAttributeValues: {
-            ':lockId': this.lockId,
-          },
+          ExpressionAttributeValues: { ':lockId': lockId },
         })
       );
     } catch (error: any) {
-      // Lock may have expired or been taken by someone else
-      if (error.name !== 'ConditionalCheckFailedException') {
-        throw error;
-      }
+      if (error.name !== 'ConditionalCheckFailedException') throw error;
     } finally {
-      this.lockId = null;
+      lockId = null;
     }
-  }
+  };
 
   /**
    * Get all applied migrations with pagination support.
@@ -202,17 +204,14 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
    * `schemaDefinition` and `schemaChanges` blobs are intentionally omitted,
    * because no internal caller reads them and including them blows up the
    * 1MB-per-page budget (and consumed RCU) on tables with many migrations.
-   * If a future caller needs the full record, fetch by version with
-   * `getMigration(version)`.
    */
-  async getAppliedMigrations(): Promise<MigrationRecord[]> {
-    const items: MigrationRecord[] = [];
+  const getAppliedMigrations = async (): Promise<MigrationRecord[]> => {
+    const pages: MigrationRecord[][] = [];
     let lastKey: Record<string, any> | undefined;
-
     do {
-      const result = await this.client.send(
+      const result = await client.send(
         new QueryCommand({
-          TableName: this.tableName,
+          TableName: tableName,
           KeyConditionExpression: 'PK = :pk',
           // `name` and `status` are DynamoDB reserved words; alias them.
           ProjectionExpression:
@@ -223,103 +222,117 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
             '#ts': 'timestamp',
             '#err': 'error',
           },
-          ExpressionAttributeValues: {
-            ':pk': this.trackingPrefix,
-          },
+          ExpressionAttributeValues: { ':pk': trackingPrefix },
           ExclusiveStartKey: lastKey,
         })
       );
-
-      items.push(...((result.Items || []) as MigrationRecord[]));
+      pages.push((result.Items ?? []) as MigrationRecord[]);
       lastKey = result.LastEvaluatedKey;
     } while (lastKey);
+    return pages.flat();
+  };
 
-    return items;
-  }
-
-  async getCurrentVersion(): Promise<string | null> {
-    const result = await this.client.send(
+  const getMigration = async (version: string): Promise<MigrationRecord | null> => {
+    const result = await client.send(
       new GetCommand({
-        TableName: this.tableName,
-        Key: {
-          PK: `${this.trackingPrefix}#CURRENT`,
-          SK: `${this.trackingPrefix}#CURRENT`,
-        },
+        TableName: tableName,
+        Key: { PK: trackingPrefix, SK: version },
       })
     );
+    return (result.Item as MigrationRecord) || null;
+  };
 
-    return result.Item?.currentVersion || null;
-  }
+  /**
+   * Inspect a `TransactionCanceledException` raised by `markAsApplied` and
+   * either swallow it (idempotent re-apply) or re-throw a typed error.
+   */
+  const handleMarkAsAppliedCancellation = async (
+    err: unknown,
+    version: string
+  ): Promise<void> => {
+    const error = err as { name?: string; CancellationReasons?: Array<{ Code?: string }> } | null;
+    if (error?.name !== 'TransactionCanceledException') throw err;
+    const reasons = error.CancellationReasons ?? [];
+    const lockReason = reasons[0];
+    const migrationReason = reasons[1];
+
+    if (lockReason?.Code === 'ConditionalCheckFailed') {
+      throw new MigrationLockLostError(version);
+    }
+    if (migrationReason?.Code === 'ConditionalCheckFailed') {
+      const current = await getMigration(version);
+      if (current?.status === 'applied') {
+        return;
+      }
+      throw new MigrationAlreadyAppliedError(version, current?.status);
+    }
+    throw err;
+  };
 
   /**
    * Mark migration as applied using TransactWrite for atomicity
    * Handles both new migrations and re-applying rolled back migrations
    */
-  async markAsApplied(
+  const markAsApplied = async (
     version: string,
     name: string,
     schemaDefinition?: Record<string, any>,
     schemaChanges?: SchemaChange[],
     checksum?: string
-  ): Promise<void> {
-    this.requireLock();
+  ): Promise<void> => {
+    requireLock();
     const now = new Date().toISOString();
-
-    // Check if migration record already exists (e.g., rolled back or failed)
-    const existing = await this.getMigration(version);
+    const existing = await getMigration(version);
 
     try {
       if (existing) {
-        // Update existing record (re-applying a rolled back or failed migration)
-        // Build dynamic update expression - DynamoDB doesn't accept undefined values
-        const setParts = ['#status = :status', 'appliedAt = :appliedAt', '#name = :name'];
-        const expressionValues: Record<string, any> = {
+        // Update existing record (re-applying a rolled back or failed migration).
+        // Build expression and values purely from the optional fields.
+        const optionalFields = [
+          ['schemaDefinition', schemaDefinition, ':schemaDef'],
+          ['schemaChanges', schemaChanges, ':schemaChanges'],
+          ['checksum', checksum, ':checksum'],
+        ] as const;
+        const presentFields = optionalFields.filter(([, value]) => value !== undefined);
+
+        const setExpr = [
+          '#status = :status',
+          'appliedAt = :appliedAt',
+          '#name = :name',
+          ...presentFields.map(([field, , placeholder]) => `${field} = ${placeholder}`),
+        ].join(', ');
+
+        const expressionValues = {
           ':status': 'applied',
           ':appliedAt': now,
           ':name': name,
+          ...Object.fromEntries(presentFields.map(([, value, placeholder]) => [placeholder, value])),
         };
 
-        if (schemaDefinition !== undefined) {
-          setParts.push('schemaDefinition = :schemaDef');
-          expressionValues[':schemaDef'] = schemaDefinition;
-        }
-        if (schemaChanges !== undefined) {
-          setParts.push('schemaChanges = :schemaChanges');
-          expressionValues[':schemaChanges'] = schemaChanges;
-        }
-        if (checksum !== undefined) {
-          setParts.push('checksum = :checksum');
-          expressionValues[':checksum'] = checksum;
-        }
-
-        await this.client.send(
+        await client.send(
           new TransactWriteCommand({
             TransactItems: [
-              this.lockOwnershipCheck(),
+              lockOwnershipCheck(),
               {
                 Update: {
-                  TableName: this.tableName,
-                  Key: {
-                    PK: this.trackingPrefix,
-                    SK: version,
-                  },
-                  UpdateExpression: `SET ${setParts.join(', ')} REMOVE #error, failedAt, rolledBackAt`,
+                  TableName: tableName,
+                  Key: { PK: trackingPrefix, SK: version },
+                  UpdateExpression: `SET ${setExpr} REMOVE #error, failedAt, rolledBackAt`,
                   ExpressionAttributeNames: {
                     '#status': 'status',
                     '#name': 'name',
                     '#error': 'error',
                   },
                   ExpressionAttributeValues: expressionValues,
-                  // Only allow re-applying if not currently applied
                   ConditionExpression: '#status <> :status',
                 },
               },
               {
                 Update: {
-                  TableName: this.tableName,
+                  TableName: tableName,
                   Key: {
-                    PK: `${this.trackingPrefix}#CURRENT`,
-                    SK: `${this.trackingPrefix}#CURRENT`,
+                    PK: `${trackingPrefix}#CURRENT`,
+                    SK: `${trackingPrefix}#CURRENT`,
                   },
                   UpdateExpression:
                     'SET currentVersion = :version, updatedAt = :updatedAt, GSI1SK = :gsi1sk',
@@ -334,16 +347,15 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
           })
         );
       } else {
-        // Create new migration record
-        await this.client.send(
+        await client.send(
           new TransactWriteCommand({
             TransactItems: [
-              this.lockOwnershipCheck(),
+              lockOwnershipCheck(),
               {
                 Put: {
-                  TableName: this.tableName,
+                  TableName: tableName,
                   Item: {
-                    PK: this.trackingPrefix,
+                    PK: trackingPrefix,
                     SK: version,
                     version,
                     name,
@@ -361,10 +373,10 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
               },
               {
                 Update: {
-                  TableName: this.tableName,
+                  TableName: tableName,
                   Key: {
-                    PK: `${this.trackingPrefix}#CURRENT`,
-                    SK: `${this.trackingPrefix}#CURRENT`,
+                    PK: `${trackingPrefix}#CURRENT`,
+                    SK: `${trackingPrefix}#CURRENT`,
                   },
                   UpdateExpression:
                     'SET currentVersion = :version, updatedAt = :updatedAt, GSI1SK = :gsi1sk',
@@ -380,92 +392,37 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
         );
       }
     } catch (err: unknown) {
-      await this.handleMarkAsAppliedCancellation(err, version);
+      await handleMarkAsAppliedCancellation(err, version);
     }
-  }
+  };
 
-  /**
-   * Inspect a `TransactionCanceledException` raised by `markAsApplied` and
-   * either swallow it (idempotent re-apply) or re-throw a typed error.
-   *
-   * The TransactWrite items are: [lockOwnershipCheck, migrationRow, currentPointer].
-   * Each item produces an entry in `CancellationReasons`.
-   *   - reasons[0] failing → the lock was lost → MigrationLockLostError.
-   *   - reasons[1] failing → the migration row already exists in a state the
-   *     write refused. Re-fetch the record:
-   *       * status === 'applied' → idempotent re-apply, return silently.
-   *       * other states         → MigrationAlreadyAppliedError with the
-   *         current state, so the caller can decide what to do.
-   */
-  private async handleMarkAsAppliedCancellation(
-    err: unknown,
-    version: string
-  ): Promise<void> {
-    const error = err as { name?: string; CancellationReasons?: Array<{ Code?: string }> } | null;
-    if (error?.name !== 'TransactionCanceledException') {
-      throw err;
-    }
-    const reasons = error.CancellationReasons ?? [];
-    const lockReason = reasons[0];
-    const migrationReason = reasons[1];
-
-    if (lockReason?.Code === 'ConditionalCheckFailed') {
-      throw new MigrationLockLostError(version);
-    }
-    if (migrationReason?.Code === 'ConditionalCheckFailed') {
-      const current = await this.getMigration(version);
-      if (current?.status === 'applied') {
-        // Either we re-tried our own write or another worker applied the same
-        // version. Either way, the desired post-state is already satisfied.
-        return;
-      }
-      throw new MigrationAlreadyAppliedError(version, current?.status);
-    }
-    throw err;
-  }
-
-  /**
-   * Mark migration as rolled back using TransactWrite for atomicity.
-   *
-   * @param previousVersion Optional. The version the CURRENT pointer should
-   *   move to after this rollback. When the caller already knows it (the
-   *   runner does — it loaded the applied list once at the top of `down()`),
-   *   passing it here skips a `getAppliedMigrations()` Query per rollback.
-   *   Without this hint, a multi-step rollback was N×(paginated Query of
-   *   the entire migration history). When omitted, the tracker falls back
-   *   to looking it up.
-   */
-  async markAsRolledBack(version: string, previousVersion?: string): Promise<void> {
-    this.requireLock();
+  const markAsRolledBack = async (
+    version: string,
+    previousVersion?: string
+  ): Promise<void> => {
+    requireLock();
     const now = new Date().toISOString();
 
-    let resolvedPrevious = previousVersion;
-    if (resolvedPrevious === undefined) {
-      // Find previous version
-      const migrations = await this.getAppliedMigrations();
-      const appliedMigrations = migrations
-        .filter((m) => m.status === 'applied' && m.version !== version)
-        .sort((a, b) => compareSemver(b.version, a.version));
+    const resolvedPrevious =
+      previousVersion ??
+      (await getAppliedMigrations()
+        .then((migrations) =>
+          migrations
+            .filter((m) => m.status === 'applied' && m.version !== version)
+            .sort((a, b) => compareSemver(b.version, a.version))
+        )
+        .then((sorted) => sorted[0]?.version || 'v0000'));
 
-      resolvedPrevious = appliedMigrations[0]?.version || 'v0000';
-    }
-
-    // Use TransactWrite to atomically update record and pointer
-    await this.client.send(
+    await client.send(
       new TransactWriteCommand({
         TransactItems: [
-          this.lockOwnershipCheck(),
+          lockOwnershipCheck(),
           {
             Update: {
-              TableName: this.tableName,
-              Key: {
-                PK: this.trackingPrefix,
-                SK: version,
-              },
+              TableName: tableName,
+              Key: { PK: trackingPrefix, SK: version },
               UpdateExpression: 'SET #status = :status, rolledBackAt = :timestamp',
-              ExpressionAttributeNames: {
-                '#status': 'status',
-              },
+              ExpressionAttributeNames: { '#status': 'status' },
               ExpressionAttributeValues: {
                 ':status': 'rolled_back',
                 ':timestamp': now,
@@ -474,10 +431,10 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
           },
           {
             Update: {
-              TableName: this.tableName,
+              TableName: tableName,
               Key: {
-                PK: `${this.trackingPrefix}#CURRENT`,
-                SK: `${this.trackingPrefix}#CURRENT`,
+                PK: `${trackingPrefix}#CURRENT`,
+                SK: `${trackingPrefix}#CURRENT`,
               },
               UpdateExpression:
                 'SET currentVersion = :version, updatedAt = :updatedAt, GSI1SK = :gsi1sk',
@@ -491,27 +448,22 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
         ],
       })
     );
-  }
+  };
 
-  async markAsFailed(version: string, error: string): Promise<void> {
-    this.requireLock();
-    // Check if the migration record exists first
-    const existing = await this.getMigration(version);
+  const markAsFailed = async (version: string, error: string): Promise<void> => {
+    requireLock();
+    const existing = await getMigration(version);
     const now = new Date().toISOString();
 
     if (existing) {
-      // Update existing record, gated by lock ownership
-      await this.client.send(
+      await client.send(
         new TransactWriteCommand({
           TransactItems: [
-            this.lockOwnershipCheck(),
+            lockOwnershipCheck(),
             {
               Update: {
-                TableName: this.tableName,
-                Key: {
-                  PK: this.trackingPrefix,
-                  SK: version,
-                },
+                TableName: tableName,
+                Key: { PK: trackingPrefix, SK: version },
                 UpdateExpression:
                   'SET #status = :status, #error = :error, failedAt = :timestamp',
                 ExpressionAttributeNames: {
@@ -529,16 +481,15 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
         })
       );
     } else {
-      // Create new record for failed migration, gated by lock ownership
-      await this.client.send(
+      await client.send(
         new TransactWriteCommand({
           TransactItems: [
-            this.lockOwnershipCheck(),
+            lockOwnershipCheck(),
             {
               Put: {
-                TableName: this.tableName,
+                TableName: tableName,
                 Item: {
-                  PK: this.trackingPrefix,
+                  PK: trackingPrefix,
                   SK: version,
                   version,
                   name: 'unknown',
@@ -553,27 +504,23 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
         })
       );
     }
-  }
+  };
 
-  async recordSchemaChange(change: SchemaChange): Promise<void> {
-    this.requireLock();
-    const currentVersion = await this.getCurrentVersion();
+  const recordSchemaChange = async (change: SchemaChange): Promise<void> => {
+    requireLock();
+    const currentVersion = await getCurrentVersion();
     if (!currentVersion || currentVersion === 'v0000') {
       throw new Error('Cannot record schema change: No migration has been applied yet');
     }
 
-    // Append to schemaChanges array, gated by lock ownership
-    await this.client.send(
+    await client.send(
       new TransactWriteCommand({
         TransactItems: [
-          this.lockOwnershipCheck(),
+          lockOwnershipCheck(),
           {
             Update: {
-              TableName: this.tableName,
-              Key: {
-                PK: this.trackingPrefix,
-                SK: currentVersion,
-              },
+              TableName: tableName,
+              Key: { PK: trackingPrefix, SK: currentVersion },
               UpdateExpression:
                 'SET schemaChanges = list_append(if_not_exists(schemaChanges, :empty_list), :change)',
               ExpressionAttributeValues: {
@@ -585,24 +532,26 @@ export class DynamoDBMigrationTracker implements MigrationTracker {
         ],
       })
     );
-  }
+  };
 
-  async getMigration(version: string): Promise<MigrationRecord | null> {
-    const result = await this.client.send(
-      new GetCommand({
-        TableName: this.tableName,
-        Key: {
-          PK: this.trackingPrefix,
-          SK: version,
-        },
-      })
-    );
-
-    return (result.Item as MigrationRecord) || null;
-  }
-
-  async isApplied(version: string): Promise<boolean> {
-    const migration = await this.getMigration(version);
+  const isApplied = async (version: string): Promise<boolean> => {
+    const migration = await getMigration(version);
     return migration?.status === 'applied';
-  }
-}
+  };
+
+  return {
+    lockTtlSeconds,
+    initialize,
+    acquireLock,
+    refreshLock,
+    releaseLock,
+    getAppliedMigrations,
+    getCurrentVersion,
+    markAsApplied,
+    markAsRolledBack,
+    markAsFailed,
+    recordSchemaChange,
+    getMigration,
+    isApplied,
+  };
+};

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
+import { createRequire } from 'module';
 import { loadConfig } from './core/config';
 import { createMigration } from './commands/create';
 import { runMigrations } from './commands/up';
@@ -10,8 +11,19 @@ import { initProject } from './commands/init';
 import { forceUnlock } from './commands/unlock';
 import { parsePositiveInt } from './cli-utils';
 
-// Read version from package.json
-const packageJson = require('../package.json');
+// Read version from package.json — `createRequire` keeps it out of rootDir
+// (so we don't need `resolveJsonModule` to reach outside src/).
+const packageJson = createRequire(__filename)('../package.json');
+
+const runCommand = async (fn: () => Promise<void>): Promise<void> => {
+  try {
+    await fn();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Error: ${message}`);
+    process.exit(1);
+  }
+};
 
 const program = new Command();
 
@@ -24,14 +36,7 @@ program
 program
   .command('init')
   .description('Initialize migrations in current project')
-  .action(async () => {
-    try {
-      await initProject();
-    } catch (error: any) {
-      console.error(`Error: ${error.message}`);
-      process.exit(1);
-    }
-  });
+  .action(() => runCommand(() => initProject()));
 
 // Create command
 program
@@ -43,8 +48,8 @@ program
   .option('--minor', 'Shortcut for --type minor')
   .option('--patch', 'Shortcut for --type patch')
   .option('-e, --explicit <version>', 'Explicit version (e.g., 2.0.0)')
-  .action(async (name: string, options) => {
-    try {
+  .action((name: string, options) =>
+    runCommand(async () => {
       // Resolve a single bump type from --type and the boolean shortcuts.
       // Reject if more than one shortcut/type was passed so the user notices
       // their own contradiction instead of getting whichever one wins.
@@ -60,22 +65,13 @@ program
       }
       const bumpType = sources[0];
 
-      let migrationsDir = './migrations';
-
-      // Try to load config to get migrations directory
-      try {
-        const config = await loadConfig(options.config);
-        migrationsDir = config.migrationsDir || './migrations';
-      } catch {
-        // If config doesn't exist, use default
-      }
+      const migrationsDir = await loadConfig(options.config)
+        .then((config) => config.migrationsDir || './migrations')
+        .catch(() => './migrations');
 
       await createMigration(name, migrationsDir, bumpType, options.explicit);
-    } catch (error: any) {
-      console.error(`Error: ${error.message}`);
-      process.exit(1);
-    }
-  });
+    })
+  );
 
 // Up command
 program
@@ -84,15 +80,12 @@ program
   .option('-c, --config <path>', 'Path to config file')
   .option('-l, --limit <number>', 'Limit number of migrations to run', parsePositiveInt('limit'))
   .option('-d, --dry-run', 'Show what would be done without making changes')
-  .action(async (options) => {
-    try {
+  .action((options) =>
+    runCommand(async () => {
       const config = await loadConfig(options.config);
       await runMigrations(config, options.limit, options.dryRun);
-    } catch (error: any) {
-      console.error(`Error: ${error.message}`);
-      process.exit(1);
-    }
-  });
+    })
+  );
 
 // Down command
 program
@@ -102,30 +95,24 @@ program
   .option('-s, --steps <number>', 'Number of migrations to rollback', parsePositiveInt('steps'), 1)
   .option('-d, --dry-run', 'Show what would be done without making changes')
   .option('-y, --yes', 'Skip the interactive confirmation prompt')
-  .action(async (options) => {
-    try {
+  .action((options) =>
+    runCommand(async () => {
       const config = await loadConfig(options.config);
       await rollbackMigrations(config, options.steps, options.dryRun, options.yes);
-    } catch (error: any) {
-      console.error(`Error: ${error.message}`);
-      process.exit(1);
-    }
-  });
+    })
+  );
 
 // Status command
 program
   .command('status')
   .description('Show migration status')
   .option('-c, --config <path>', 'Path to config file')
-  .action(async (options) => {
-    try {
+  .action((options) =>
+    runCommand(async () => {
       const config = await loadConfig(options.config);
       await showStatus(config);
-    } catch (error: any) {
-      console.error(`Error: ${error.message}`);
-      process.exit(1);
-    }
-  });
+    })
+  );
 
 // Unlock command — for emergency recovery when a migration process died
 // hard without releasing its lock. The 5-minute TTL eventually clears
@@ -135,14 +122,11 @@ program
   .description('Forcefully release the migration lock (emergency recovery)')
   .option('-c, --config <path>', 'Path to config file')
   .option('-y, --yes', 'Skip the interactive confirmation prompt')
-  .action(async (options) => {
-    try {
+  .action((options) =>
+    runCommand(async () => {
       const config = await loadConfig(options.config);
       await forceUnlock(config, options.yes);
-    } catch (error: any) {
-      console.error(`Error: ${error.message}`);
-      process.exit(1);
-    }
-  });
+    })
+  );
 
 program.parse(process.argv);

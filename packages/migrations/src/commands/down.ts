@@ -1,5 +1,5 @@
 import * as readline from 'readline';
-import { MigrationRunner } from '../core/runner';
+import { createMigrationRunner } from '../core/runner';
 import { createDynamoDBClient } from '../core/client';
 import { MigrationConfig } from '../types';
 
@@ -28,7 +28,7 @@ export async function rollbackMigrations(
   yes: boolean = false
 ): Promise<void> {
   const client = createDynamoDBClient(config);
-  const runner = new MigrationRunner(client, config);
+  const runner = createMigrationRunner(client, config);
 
   try {
     if (!dryRun && !yes) {
@@ -50,8 +50,9 @@ export async function rollbackMigrations(
       const currentVersion = await runner.getCurrentVersion();
       console.log(`📌 Current version: ${currentVersion}\n`);
     }
-  } catch (error: any) {
-    console.error(`\n❌ Rollback failed: ${error.message}\n`);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`\n❌ Rollback failed: ${message}\n`);
     process.exit(1);
   }
 }

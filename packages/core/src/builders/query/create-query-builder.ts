@@ -377,27 +377,26 @@ function createQueryExecutor<Model>(state: QueryState<Model>): QueryExecutor<Mod
       }
 
       // Merge attribute names and values from both expressions
+      // Build ProjectionExpression with placeholders so reserved words
+      // (name, date, status, type, …) don't blow up at DynamoDB.
+      // Idempotent merge: filter/key and projection placeholders both map
+      // `#name → name`, so collisions resolve to the same value.
+      const projection =
+        state.projection && state.projection.length > 0
+          ? buildProjectionExpression(
+              (state.projection as (keyof Model)[]).map((a) => String(a))
+            )
+          : undefined;
+
       const allNames: Record<string, string> = {
         ...(keyExpr.names ?? {}),
         ...(filterExpr.names ?? {}),
+        ...(projection?.ExpressionAttributeNames ?? {}),
       };
       const allValues = {
         ...(keyExpr.values ?? {}),
         ...(filterExpr.values ?? {}),
       };
-
-      // Build ProjectionExpression with placeholders so reserved words
-      // (name, date, status, type, …) don't blow up at DynamoDB.
-      // Idempotent merge: filter/key and projection placeholders both map
-      // `#name → name`, so collisions resolve to the same value.
-      let projectionExpression: string | undefined;
-      if (state.projection && state.projection.length > 0) {
-        const proj = buildProjectionExpression(
-          (state.projection as (keyof Model)[]).map((a) => String(a))
-        );
-        projectionExpression = proj.ProjectionExpression;
-        Object.assign(allNames, proj.ExpressionAttributeNames);
-      }
 
       return {
         TableName: state.tableName,
@@ -418,8 +417,8 @@ function createQueryExecutor<Model>(state: QueryState<Model>): QueryExecutor<Mod
         ...(state.scanForward !== undefined && {
           ScanIndexForward: state.scanForward,
         }),
-        ...(projectionExpression && {
-          ProjectionExpression: projectionExpression,
+        ...(projection && {
+          ProjectionExpression: projection.ProjectionExpression,
         }),
         ...(state.consistentReadEnabled && { ConsistentRead: true }),
         ...(state.exclusiveStartKey && {

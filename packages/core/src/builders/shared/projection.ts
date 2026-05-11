@@ -12,17 +12,8 @@ export function buildProjectionExpression(attrs: string[]): {
   ProjectionExpression: string;
   ExpressionAttributeNames: Record<string, string>;
 } {
-  const names: Record<string, string> = {};
-  const projectionParts: string[] = [];
-
-  attrs.forEach((attr) => {
-    const placeholder = `#${attr}`;
-    names[placeholder] = attr;
-    projectionParts.push(placeholder);
-  });
-
   return {
-    ProjectionExpression: projectionParts.join(', '),
-    ExpressionAttributeNames: names,
+    ProjectionExpression: attrs.map((attr) => `#${attr}`).join(', '),
+    ExpressionAttributeNames: Object.fromEntries(attrs.map((attr) => [`#${attr}`, attr])),
   };
 }
