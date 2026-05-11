@@ -1,3 +1,46 @@
+# @ftschopp/dynatable-core [2.0.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.6.1...@ftschopp/dynatable-core@2.0.0) (2026-05-11)
+
+
+### Code Refactoring
+
+* adopt functional style across core, migrations, and docs ([#53](https://github.com/ftschopp/dynatable/issues/53)) ([de6a6c4](https://github.com/ftschopp/dynatable/commit/de6a6c46aad452be51d08d7ac5886b6c4406ddea))
+
+
+### BREAKING CHANGES
+
+* (migrations): convert class-based public APIs to factory
+functions to remove gratuitous OO ceremony — no behavior changes.
+
+- MigrationRunner / DynamoDBMigrationTracker / MigrationLoader / ConfigLoader
+  → createMigrationRunner / createMigrationTracker / createMigrationLoader
+  → loadConfig / createDefaultConfig (free functions)
+- Centralize CLI try/catch in a single runCommand helper; replace `error: any`
+  with `unknown` + narrowing throughout migrations.
+- Group migration statuses with a single reduce instead of four .filter passes.
+
+Core (no behavior changes):
+- buildProjectionExpression, operators.in, resolveKeys: replace forEach/for-of
+  + mutation with Object.fromEntries / map composition.
+- scan.dbParams / query.dbParams / update.dbParams: replace `let params: any` +
+  imperative assignments with a single object literal using conditional spread;
+  replace `Object.assign(allNames, …)` loops with a buildSection helper that
+  reduces actions into { part, names, values }.
+
+Docs: replace `let query = …; if (cond) query = query.set(…)` with
+`.set(filteredFields)` or conditional `startFrom`; switch a mutating `.sort()`
+on a feed array to `.toSorted()`.
+
+* chore: switch to createRequire in migrations CLI/loader and pin Node 22
+
+- Replace top-level `require()` calls with `createRequire(__filename)` in
+  cli.ts and loader.ts so the package compiles cleanly without falling back
+  on bundler-specific shims; switch `require('ts-node')` to `await import`
+  for ESM compatibility (registerTsNode is now async).
+- Simplify update examples in blog-system.md: pass the partial `updates`
+  object directly to `.set(...)` — Dynatable already ignores undefined
+  fields, so the manual filter was redundant.
+- Add .nvmrc pinning to Node 22 (matches engines field in package.json).
+
 ## @ftschopp/dynatable-core [1.6.1](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.6.0...@ftschopp/dynatable-core@1.6.1) (2026-05-10)
 
 
