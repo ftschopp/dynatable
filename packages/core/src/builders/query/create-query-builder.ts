@@ -130,6 +130,51 @@ function applyKeyTemplate(
 }
 
 /**
+ * Heuristic for identifying a hash (partition) key by name. Used only to
+ * decide whether a literal-template auto-injection covers DynamoDB's
+ * "Query needs a partition key" requirement — for actual key resolution
+ * we go through {@link keyBelongsToIndex} instead.
+ *
+ * Convention: primary is literally `PK`; index keys are `${indexName}PK`
+ * (conventional) or any `…PK`-suffixed name (non-conventional, opted in
+ * via `KeyDefinition.indexName`). The legitimate non-conventional case
+ * `BySpotifyId` / `lookupPK` is captured by the `endsWith('PK')` check.
+ */
+function isHashKeyName(keyName: string, indexName?: string): boolean {
+  return indexName ? keyName.endsWith('PK') : keyName === 'PK';
+}
+
+/**
+ * Collects every key on the active index (or primary) whose template is
+ * fully literal — no `${...}` variables. These keys can't be referenced
+ * by attribute name in `where()` (there is no template var to bind to),
+ * so the query builder synthesizes the equality condition itself.
+ *
+ * Two real-world patterns this enables:
+ *  1. Entity-type partition: `GSI1PK: 'AIRPORT'` with a variable SK —
+ *     "give me every Airport, filtered/range-scoped by SK".
+ *  2. Singleton sort-key marker: `SK: 'PROFILE'` paired with a variable
+ *     PK like `'USER#${userId}'` — auto-injecting SK turns a wasteful
+ *     "scan the whole user partition then filter" into a direct lookup.
+ */
+function getLiteralKeys(
+  model?: ModelDefinition,
+  indexName?: string
+): { keyName: string; value: string }[] {
+  if (!model) return [];
+
+  const entries = indexName
+    ? Object.entries(model.index ?? {}).filter(([keyName, keyDef]) =>
+        keyBelongsToIndex(keyName, keyDef, indexName)
+      )
+    : Object.entries(model.key);
+
+  return entries
+    .filter(([, keyDef]) => extractTemplateVars(keyDef.value).length === 0)
+    .map(([keyName, keyDef]) => ({ keyName, value: keyDef.value }));
+}
+
+/**
  * Separates a condition tree into key conditions and filter conditions
  * Key conditions are rewritten to use actual DynamoDB key names (PK/SK)
  */
@@ -319,12 +364,42 @@ function createQueryExecutor<Model>(state: QueryState<Model>): QueryExecutor<Mod
         state.indexName
       );
 
-      // DynamoDB Query requires at least a partition-key condition. If
-      // separation didn't pick anything as a key condition, the caller is
-      // either filtering on non-key attributes (which means they want
-      // scan()) or referencing the wrong attribute name. Fail loudly here
-      // instead of letting the SDK reject the request at execute time.
-      if (keyConditions.length === 0) {
+      // Auto-inject equality conditions for keys whose template is fully
+      // literal — they have no `${vars}`, so the user can't reference
+      // them via `attr.*` in `where()`. Two real patterns this enables:
+      //   1. Entity-type GSI partition: `GSI1PK: 'AIRPORT'` — without
+      //      injection DynamoDB rejects the Query for missing the PK.
+      //   2. Sort-key marker: `SK: 'PROFILE'` paired with a variable PK
+      //      like `'USER#${userId}'` — without injection the query reads
+      //      every item under that PK and post-filters by `_type`.
+      // The `covered` check is defensive — a literal-template key can't
+      // appear in user conditions (no template var to bind) — but cheap
+      // protection against future schema shapes.
+      const literalKeys = getLiteralKeys(state.model, state.indexName);
+      const userKeyConditionCount = keyConditions.length;
+      for (const { keyName, value } of literalKeys) {
+        const covered = keyConditions.some((cond) =>
+          Object.values(cond.names ?? {}).includes(keyName)
+        );
+        if (covered) continue;
+        keyConditions.push({
+          expression: `#${keyName} = :${keyName}_literal`,
+          names: { [`#${keyName}`]: keyName },
+          values: { [`:${keyName}_literal`]: value },
+        });
+      }
+
+      // DynamoDB Query requires at least a partition-key condition. The
+      // friendly error fires when:
+      //   - the user's where() contributed zero key conditions, AND
+      //   - no auto-injected literal covers the hash key.
+      // We can't blindly check `keyConditions.length === 0` after
+      // injection because a literal SK alone would silently slip past
+      // and produce a less helpful DynamoDB error.
+      const literalHashInjected = literalKeys.some(({ keyName }) =>
+        isHashKeyName(keyName, state.indexName)
+      );
+      if (userKeyConditionCount === 0 && !literalHashInjected) {
         const keyTemplates = state.indexName
           ? Object.entries(state.model?.index ?? {})
               .filter(([keyName, def]) =>

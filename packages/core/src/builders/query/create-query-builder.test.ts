@@ -833,6 +833,256 @@ describe('QueryBuilder - entity type auto filter', () => {
   });
 });
 
+describe('QueryBuilder - literal-template hash key auto-injection', () => {
+  const client = new DynamoDBClient({});
+  const tableName = 'TestTable';
+
+  // Mirrors the reported scenario: GSI1PK is a static entity-type marker
+  // shared across rows ("AIRPORT"), with the variability living on the SK.
+  // The user can't reference 'AIRPORT' via attr.* because it isn't a model
+  // attribute, so the builder must inject `#GSI1PK = 'AIRPORT'` itself.
+  interface Airport {
+    code: string;
+    region: string;
+    country: string;
+    status: string;
+  }
+
+  const airportModel: ModelDefinition = {
+    key: {
+      PK: { type: String, value: 'AIRPORT#${code}' },
+      SK: { type: String, value: 'AIRPORT#${code}' },
+    },
+    index: {
+      GSI1PK: { type: String, value: 'AIRPORT' },
+      GSI1SK: { type: String, value: '${region}#${country}' },
+    },
+    attributes: {
+      code: { type: String, required: true },
+      region: { type: String, required: true },
+      country: { type: String, required: true },
+      status: { type: String, required: true },
+    },
+  };
+
+  test('repro: beginsWith on the SK template var succeeds with auto-injected literal PK', () => {
+    const params = createQueryBuilder<Airport>(tableName, client, airportModel)
+      .where((attr, op) => op.beginsWith(attr.region, 'SOUTH_AMERICA'))
+      .useIndex('GSI1')
+      .dbParams();
+
+    expect(params.KeyConditionExpression).toBeDefined();
+    expect(params.KeyConditionExpression).toContain('#GSI1PK = :GSI1PK_literal');
+    expect(params.KeyConditionExpression).toContain('begins_with(#GSI1SK');
+    expect(params.ExpressionAttributeNames?.['#GSI1PK']).toBe('GSI1PK');
+    expect(params.ExpressionAttributeValues?.[':GSI1PK_literal']).toBe('AIRPORT');
+    // beginsWith on a multi-var SK template truncates at the next ${...}
+    // — see applyKeyTemplate; expected prefix is 'SOUTH_AMERICA#'.
+    expect(Object.values(params.ExpressionAttributeValues ?? {})).toContain('SOUTH_AMERICA#');
+    expect(params.IndexName).toBe('GSI1');
+  });
+
+  test('auto-injects the literal PK even when the user only constrains a non-key attribute', () => {
+    // The where clause references `status`, which is not a key var — it
+    // becomes a FilterExpression. Without auto-injection, separateConditions
+    // produces zero key conditions and the friendly error fires. With it,
+    // the query degrades cleanly to "fetch every AIRPORT row" with a
+    // server-side filter on status.
+    const params = createQueryBuilder<Airport>(tableName, client, airportModel)
+      .where((attr, op) => op.eq(attr.status, 'OPEN'))
+      .useIndex('GSI1')
+      .dbParams();
+
+    expect(params.KeyConditionExpression).toContain('#GSI1PK = :GSI1PK_literal');
+    expect(params.ExpressionAttributeValues?.[':GSI1PK_literal']).toBe('AIRPORT');
+    expect(params.FilterExpression).toContain('#status');
+  });
+
+  test('still throws the friendly error when no key condition can be derived AND no literal hash key exists', () => {
+    // No literal hash key on this model — the PK template references id.
+    const userModel: ModelDefinition = {
+      key: {
+        PK: { type: String, value: 'USER#${id}' },
+        SK: { type: String, value: 'USER#${id}' },
+      },
+      attributes: {
+        id: { type: String, required: true },
+        status: { type: String },
+      },
+    };
+
+    const builder = createQueryBuilder<{ id: string; status: string }>(
+      tableName,
+      client,
+      userModel
+    ).where((attr, op) => op.eq(attr.status, 'active'));
+
+    expect(() => builder.dbParams()).toThrow(/partition key/i);
+  });
+
+  test('primary key with a literal PK template also gets auto-injected', () => {
+    // PK literal on the primary index (not just GSIs). Rare but valid.
+    const singletonModel: ModelDefinition = {
+      key: {
+        PK: { type: String, value: 'CONFIG' },
+        SK: { type: String, value: 'V#${version}' },
+      },
+      attributes: {
+        version: { type: String, required: true },
+      },
+    };
+
+    const params = createQueryBuilder<{ version: string }>(tableName, client, singletonModel)
+      .where((attr, op) => op.beginsWith(attr.version, '2'))
+      .dbParams();
+
+    expect(params.KeyConditionExpression).toContain('#PK = :PK_literal');
+    expect(params.KeyConditionExpression).toContain('begins_with(#SK');
+    expect(params.ExpressionAttributeValues?.[':PK_literal']).toBe('CONFIG');
+  });
+
+  test('does NOT auto-inject when the PK template is not literal (back-compat)', () => {
+    // Sanity check: pre-existing model with vars in PK keeps current behavior.
+    const userModel: ModelDefinition = {
+      key: {
+        PK: { type: String, value: 'USER#${id}' },
+        SK: { type: String, value: 'USER#${id}' },
+      },
+      attributes: {
+        id: { type: String, required: true },
+      },
+    };
+
+    const params = createQueryBuilder<{ id: string }>(tableName, client, userModel)
+      .where((attr, op) => op.eq(attr.id, 'alice'))
+      .dbParams();
+
+    expect(params.ExpressionAttributeNames?.['#PK_literal']).toBeUndefined();
+    expect(params.ExpressionAttributeValues?.[':PK_literal']).toBeUndefined();
+    // The id-bearing condition was rewritten to the PK as usual.
+    expect(params.KeyConditionExpression).toContain('#PK');
+  });
+
+  test('literal SK marker is auto-injected (canonical UserProfile pattern from docs)', () => {
+    // Pattern straight from apps/docs/docs/guides/data-modeling.md:118 —
+    // separate UserProfile entity sitting under the User partition. Before
+    // auto-injection, `.entities.UserProfile.query()` would scan every
+    // item under USER#id and post-filter by _type; after, the literal SK
+    // becomes an equality condition that fetches just the profile row.
+    interface UserProfile {
+      userId: string;
+      bio: string;
+    }
+
+    const userProfileModel: ModelDefinition = {
+      key: {
+        PK: { type: String, value: 'USER#${userId}' },
+        SK: { type: String, value: 'PROFILE' },
+      },
+      attributes: {
+        userId: { type: String, required: true },
+        bio: { type: String, required: true },
+      },
+    };
+
+    const params = createQueryBuilder<UserProfile>(tableName, client, userProfileModel)
+      .where((attr, op) => op.eq(attr.userId, 'alice'))
+      .dbParams();
+
+    expect(params.KeyConditionExpression).toContain('#PK');
+    expect(params.KeyConditionExpression).toContain('#SK = :SK_literal');
+    expect(params.ExpressionAttributeValues?.[':SK_literal']).toBe('PROFILE');
+    // PK still resolves through the user-supplied condition on userId.
+    expect(Object.values(params.ExpressionAttributeValues ?? {})).toContain('USER#alice');
+  });
+
+  test('both PK and SK literal: both auto-injected, returning the unique singleton', () => {
+    // Edge case: pure-singleton entity. Better suited to .get() in practice,
+    // but query() shouldn't silently break for it.
+    const singletonModel: ModelDefinition = {
+      key: {
+        PK: { type: String, value: 'CONFIG' },
+        SK: { type: String, value: 'V1' },
+      },
+      attributes: {
+        value: { type: String, required: true },
+      },
+    };
+
+    const params = createQueryBuilder<{ value: string }>(
+      tableName,
+      client,
+      singletonModel
+    )
+      .where((attr, op) => op.eq(attr.value, 'unused-filter'))
+      .dbParams();
+
+    expect(params.KeyConditionExpression).toContain('#PK = :PK_literal');
+    expect(params.KeyConditionExpression).toContain('#SK = :SK_literal');
+    expect(params.ExpressionAttributeValues?.[':PK_literal']).toBe('CONFIG');
+    expect(params.ExpressionAttributeValues?.[':SK_literal']).toBe('V1');
+    // The non-key attribute went to FilterExpression as expected.
+    expect(params.FilterExpression).toContain('#value');
+  });
+
+  test('literal SK alone is NOT enough to satisfy the partition-key requirement', () => {
+    // Edge case: SK is literal but PK has vars. If the user supplies
+    // nothing key-related, auto-injecting just the SK leaves no PK
+    // condition — DynamoDB would reject. We preserve the friendly error
+    // instead of letting that less-helpful error escape.
+    const userProfileModel: ModelDefinition = {
+      key: {
+        PK: { type: String, value: 'USER#${userId}' },
+        SK: { type: String, value: 'PROFILE' },
+      },
+      attributes: {
+        userId: { type: String, required: true },
+        status: { type: String },
+      },
+    };
+
+    const builder = createQueryBuilder<{ userId: string; status: string }>(
+      tableName,
+      client,
+      userProfileModel
+    ).where((attr, op) => op.eq(attr.status, 'active'));
+
+    expect(() => builder.dbParams()).toThrow(/partition key/i);
+    expect(() => builder.dbParams()).toThrow(/userId/);
+  });
+
+  test('non-conventional index name with literal hash (ends in PK) is auto-injected', () => {
+    interface CountryRecord {
+      country: string;
+      name: string;
+    }
+
+    const countryModel: ModelDefinition = {
+      key: {
+        PK: { type: String, value: 'COUNTRY#${country}' },
+        SK: { type: String, value: 'COUNTRY#${country}' },
+      },
+      index: {
+        lookupPK: { type: String, value: 'ALL_COUNTRIES', indexName: 'ByName' },
+        lookupSK: { type: String, value: '${name}', indexName: 'ByName' },
+      },
+      attributes: {
+        country: { type: String, required: true },
+        name: { type: String, required: true },
+      },
+    };
+
+    const params = createQueryBuilder<CountryRecord>(tableName, client, countryModel)
+      .where((attr, op) => op.beginsWith(attr.name, 'A'))
+      .useIndex('ByName')
+      .dbParams();
+
+    expect(params.KeyConditionExpression).toContain('#lookupPK = :lookupPK_literal');
+    expect(params.ExpressionAttributeValues?.[':lookupPK_literal']).toBe('ALL_COUNTRIES');
+    expect(params.IndexName).toBe('ByName');
+  });
+});
+
 describe('QueryBuilder - projection placeholders', () => {
   const client = new DynamoDBClient({});
   const tableName = 'TestTable';
