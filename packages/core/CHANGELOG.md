@@ -1,3 +1,10 @@
+# @ftschopp/dynatable-core [2.1.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@2.0.0...@ftschopp/dynatable-core@2.1.0) (2026-06-01)
+
+
+### Features
+
+* **core:** auto-inject equality conditions for literal-template keys in query builder ([5ecb781](https://github.com/ftschopp/dynatable/commit/5ecb78130a393a63eb255a49116177bff1caa496))
+
 # @ftschopp/dynatable-core [2.0.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@1.6.1...@ftschopp/dynatable-core@2.0.0) (2026-05-11)
 
 
