@@ -1,3 +1,10 @@
+# @ftschopp/dynatable-core [2.2.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@2.1.0...@ftschopp/dynatable-core@2.2.0) (2026-06-02)
+
+
+### Features
+
+* **core:** add setIfNotExists to UpdateBuilder for immutable upsert fields ([#54](https://github.com/ftschopp/dynatable/issues/54)) ([a35d208](https://github.com/ftschopp/dynatable/commit/a35d2087f7b28c46c95a6da98dca910b4a8ee97c))
+
 # @ftschopp/dynatable-core [2.1.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@2.0.0...@ftschopp/dynatable-core@2.1.0) (2026-06-01)
 
 
