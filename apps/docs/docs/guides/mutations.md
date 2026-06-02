@@ -137,6 +137,40 @@ await table.entities.User.update({
 Both forms are equivalent. The object form is convenient when patching from a partial DTO. Any attribute name is accepted, including `name`.
 :::
 
+### Set If Not Exists (Immutable on Upsert)
+
+Use `setIfNotExists` to write an attribute only on first insert. Maps to DynamoDB's `if_not_exists()` SET function: the value is kept if the attribute already exists on the item. The canonical case is an immutable `createdAt` timestamp on an upsert:
+
+```typescript
+const now = new Date().toISOString();
+
+await table.entities.User.update({
+  username: 'alice',
+})
+  .set('lastSeenAt', now)
+  .setIfNotExists('createdAt', now)
+  .execute();
+```
+
+The object form sets several immutable-on-create fields at once:
+
+```typescript
+await table.entities.Order.update({
+  orderId: 'ord_42',
+})
+  .set('status', 'shipped')
+  .setIfNotExists({ createdAt: now, createdBy: 'alice' })
+  .execute();
+```
+
+:::caution
+`setIfNotExists` is rejected by the builder when the field participates in any primary-key or secondary-index template. The resolved value is decided by DynamoDB at write time, so the index key cannot be recomputed safely — allowing it would silently corrupt the index whenever the conditional write keeps the existing value. Either keep the immutable field out of every key template, or perform a get + conditional `.set()` in two steps.
+:::
+
+:::note
+Combining `.set('foo', ...)` and `.setIfNotExists('foo', ...)` on the same attribute is rejected before the request leaves the process (DynamoDB would reject it as overlapping document paths).
+:::
+
 ### Add (Increment/Decrement)
 
 Increment a number:
@@ -489,6 +523,10 @@ await table.entities.User.update({
 
 // createdAt unchanged, updatedAt updated
 ```
+
+:::note
+The automatic `createdAt` only fires on `.put()`. If you're using `.update()` as an upsert (the item may or may not exist yet), use [`setIfNotExists`](#set-if-not-exists-immutable-on-upsert) to write `createdAt` only on the first insert.
+:::
 
 ## Error Handling
 

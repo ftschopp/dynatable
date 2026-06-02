@@ -881,4 +881,299 @@ describe('UpdateBuilder', () => {
       expect(params.ReturnValues).toBe('ALL_NEW');
     });
   });
+
+  describe('setIfNotExists', () => {
+    interface UpsertModel {
+      pk: string;
+      sk: string;
+      createdAt?: string;
+      createdBy?: string;
+      updatedAt?: string;
+      name?: string;
+    }
+
+    test('emits if_not_exists() expression for single attribute', () => {
+      const key: Partial<UpsertModel> = { pk: 'USER#1', sk: 'USER#1' };
+      const params = createUpdateBuilder<UpsertModel>(tableName, key, client)
+        .setIfNotExists('createdAt', '2026-01-01T00:00:00Z')
+        .dbParams();
+
+      expect(params.UpdateExpression).toBe(
+        'SET #createdAt = if_not_exists(#createdAt, :createdAt_0)'
+      );
+      expect(params.ExpressionAttributeNames).toEqual({ '#createdAt': 'createdAt' });
+      expect(params.ExpressionAttributeValues).toEqual({
+        ':createdAt_0': '2026-01-01T00:00:00Z',
+      });
+    });
+
+    test('emits one if_not_exists() per attribute for object form', () => {
+      const key: Partial<UpsertModel> = { pk: 'USER#1', sk: 'USER#1' };
+      const params = createUpdateBuilder<UpsertModel>(tableName, key, client)
+        .setIfNotExists({
+          createdAt: '2026-01-01T00:00:00Z',
+          createdBy: 'alice',
+        })
+        .dbParams();
+
+      expect(params.UpdateExpression).toBe(
+        'SET #createdAt = if_not_exists(#createdAt, :createdAt_0), ' +
+          '#createdBy = if_not_exists(#createdBy, :createdBy_1)'
+      );
+      expect(params.ExpressionAttributeNames).toEqual({
+        '#createdAt': 'createdAt',
+        '#createdBy': 'createdBy',
+      });
+      expect(params.ExpressionAttributeValues).toEqual({
+        ':createdAt_0': '2026-01-01T00:00:00Z',
+        ':createdBy_1': 'alice',
+      });
+    });
+
+    test('combines with .set() on different attributes in one SET clause', () => {
+      const key: Partial<UpsertModel> = { pk: 'USER#1', sk: 'USER#1' };
+      const params = createUpdateBuilder<UpsertModel>(tableName, key, client)
+        .set('name', 'Alice')
+        .setIfNotExists('createdAt', '2026-01-01T00:00:00Z')
+        .dbParams();
+
+      expect(params.UpdateExpression).toBe(
+        'SET #name = :name_0, #createdAt = if_not_exists(#createdAt, :createdAt_1)'
+      );
+      expect(params.ExpressionAttributeValues).toEqual({
+        ':name_0': 'Alice',
+        ':createdAt_1': '2026-01-01T00:00:00Z',
+      });
+    });
+
+    test('builder is immutable — chained call returns a new instance', () => {
+      const key: Partial<UpsertModel> = { pk: 'USER#1', sk: 'USER#1' };
+      const builder1 = createUpdateBuilder<UpsertModel>(tableName, key, client);
+      const builder2 = builder1.setIfNotExists('createdAt', '2026-01-01T00:00:00Z');
+
+      expect(() => builder1.dbParams()).toThrow(/no SET, REMOVE, ADD, or DELETE/i);
+      expect(builder2.dbParams().UpdateExpression).toBe(
+        'SET #createdAt = if_not_exists(#createdAt, :createdAt_0)'
+      );
+    });
+
+    test('preserves ReturnValues setting through the chain', () => {
+      const key: Partial<UpsertModel> = { pk: 'USER#1', sk: 'USER#1' };
+      const params = createUpdateBuilder<UpsertModel>(tableName, key, client)
+        .setIfNotExists('createdAt', '2026-01-01T00:00:00Z')
+        .returning('ALL_NEW')
+        .dbParams();
+      expect(params.ReturnValues).toBe('ALL_NEW');
+    });
+
+    test('with enableTimestamps + setIfNotExists(createdAt) — both SETs coexist', () => {
+      // Classic upsert pattern: enableTimestamps owns updatedAt, the user
+      // owns createdAt with setIfNotExists so it's written only on insert.
+      const key: Partial<UpsertModel> = { pk: 'USER#1', sk: 'USER#1' };
+      const params = createUpdateBuilder<UpsertModel>(
+        tableName,
+        key,
+        client,
+        [],
+        { set: [], remove: [], add: [], delete: [] },
+        'NONE',
+        0,
+        true // enableTimestamps
+      )
+        .set('name', 'Alice')
+        .setIfNotExists('createdAt', '2026-01-01T00:00:00Z')
+        .dbParams();
+
+      expect(params.UpdateExpression).toContain(
+        '#createdAt = if_not_exists(#createdAt, :createdAt_1)'
+      );
+      expect(params.UpdateExpression).toContain('#updatedAt = :updatedAt_ts');
+      expect(params.UpdateExpression).toContain('#name = :name_0');
+    });
+  });
+
+  describe('setIfNotExists — guards and dedup', () => {
+    interface PersonnelModel {
+      id: string;
+      airportId: string;
+      firstName: string;
+      lastName: string;
+      role: string;
+      createdAt?: string;
+    }
+
+    const personnelModel = {
+      key: {
+        PK: { type: String, value: 'PERSON#${id}' },
+        SK: { type: String, value: 'PROFILE' },
+      },
+      index: {
+        GSI1PK: { type: String, value: 'AIRPORT#${airportId}' },
+        GSI1SK: { type: String, value: 'PERSON#${lastName}#${firstName}' },
+      },
+      attributes: {
+        id: { type: String, required: true },
+        airportId: { type: String, required: true },
+        firstName: { type: String, required: true },
+        lastName: { type: String, required: true },
+        role: { type: String },
+        createdAt: { type: String },
+      },
+    } as const;
+
+    test('rejects setIfNotExists on a primary-key template var', () => {
+      const builder = createUpdateBuilder<PersonnelModel>(
+        tableName,
+        { id: '1' } as Partial<PersonnelModel>,
+        client,
+        [],
+        { set: [], remove: [], add: [], delete: [] },
+        'NONE',
+        0,
+        false,
+        undefined,
+        { model: personnelModel as any, keyVars: { id: '1' } }
+      ).setIfNotExists('id', '2');
+
+      expect(() => builder.dbParams()).toThrow(/primary key template/i);
+      expect(() => builder.dbParams()).toThrow(/\[id\]/);
+    });
+
+    test('rejects setIfNotExists on a secondary-index template var', () => {
+      const builder = createUpdateBuilder<PersonnelModel>(
+        tableName,
+        { id: '1' } as Partial<PersonnelModel>,
+        client,
+        [],
+        { set: [], remove: [], add: [], delete: [] },
+        'NONE',
+        0,
+        false,
+        undefined,
+        { model: personnelModel as any, keyVars: { id: '1' } }
+      ).setIfNotExists('airportId', 'EZE');
+
+      expect(() => builder.dbParams()).toThrow(/secondary-index template/i);
+      expect(() => builder.dbParams()).toThrow(/\[airportId\]/);
+      expect(() => builder.dbParams()).toThrow(/if_not_exists\(\)/);
+    });
+
+    test('rejects setIfNotExists object form when a key is in a GSI template', () => {
+      const builder = createUpdateBuilder<PersonnelModel>(
+        tableName,
+        { id: '1' } as Partial<PersonnelModel>,
+        client,
+        [],
+        { set: [], remove: [], add: [], delete: [] },
+        'NONE',
+        0,
+        false,
+        undefined,
+        { model: personnelModel as any, keyVars: { id: '1' } }
+      ).setIfNotExists({ createdAt: '2026-01-01', firstName: 'Ada' });
+
+      // firstName participates in GSI1SK → rejection.
+      expect(() => builder.dbParams()).toThrow(/secondary-index template/i);
+      expect(() => builder.dbParams()).toThrow(/\[firstName\]/);
+    });
+
+    test('allows setIfNotExists on a field that is NOT in any index template', () => {
+      // createdAt is declared in attributes but not referenced by any
+      // key or GSI template — the safe upsert case.
+      const params = createUpdateBuilder<PersonnelModel>(
+        tableName,
+        { id: '1' } as Partial<PersonnelModel>,
+        client,
+        [],
+        { set: [], remove: [], add: [], delete: [] },
+        'NONE',
+        0,
+        false,
+        undefined,
+        { model: personnelModel as any, keyVars: { id: '1' } }
+      )
+        .set('role', 'pilot')
+        .setIfNotExists('createdAt', '2026-01-01T00:00:00Z')
+        .dbParams();
+
+      expect(params.UpdateExpression).toBe(
+        'SET #role = :role_0, #createdAt = if_not_exists(#createdAt, :createdAt_1)'
+      );
+      // GSI keys are not touched — no recompute.
+      expect(params.ExpressionAttributeNames).not.toHaveProperty('#GSI1SK');
+      expect(params.ExpressionAttributeNames).not.toHaveProperty('#GSI1PK');
+    });
+
+    test('dedup: .set() then .setIfNotExists() on the same attribute throws', () => {
+      const key: Partial<{ pk: string; sk: string; foo: string }> = {
+        pk: 'USER#1',
+        sk: 'USER#1',
+      };
+      const builder = createUpdateBuilder<{ pk: string; sk: string; foo: string }>(
+        tableName,
+        key,
+        client
+      )
+        .set('foo', 'a')
+        .setIfNotExists('foo', 'b');
+
+      expect(() => builder.dbParams()).toThrow(/multiple SET actions/i);
+      expect(() => builder.dbParams()).toThrow(/\[foo\]/);
+    });
+
+    test('dedup: .set() twice on the same attribute throws (latent bug fix)', () => {
+      const key: Partial<{ pk: string; sk: string; foo: string }> = {
+        pk: 'USER#1',
+        sk: 'USER#1',
+      };
+      const builder = createUpdateBuilder<{ pk: string; sk: string; foo: string }>(
+        tableName,
+        key,
+        client
+      )
+        .set('foo', 'a')
+        .set('foo', 'b');
+
+      expect(() => builder.dbParams()).toThrow(/multiple SET actions/i);
+      expect(() => builder.dbParams()).toThrow(/\[foo\]/);
+    });
+
+    test('dedup: setIfNotExists(updatedAt) with enableTimestamps throws', () => {
+      const key: Partial<{ pk: string; sk: string; updatedAt: string }> = {
+        pk: 'USER#1',
+        sk: 'USER#1',
+      };
+      const builder = createUpdateBuilder<{ pk: string; sk: string; updatedAt: string }>(
+        tableName,
+        key,
+        client,
+        [],
+        { set: [], remove: [], add: [], delete: [] },
+        'NONE',
+        0,
+        true // enableTimestamps
+      ).setIfNotExists('updatedAt', '2026-01-01');
+
+      expect(() => builder.dbParams()).toThrow(/multiple SET actions/i);
+      expect(() => builder.dbParams()).toThrow(/\[updatedAt\]/);
+    });
+
+    test('only-setIfNotExists chain (no .set/.remove/.add/.delete) still produces valid params', () => {
+      const key: Partial<{ pk: string; sk: string; createdAt: string }> = {
+        pk: 'USER#1',
+        sk: 'USER#1',
+      };
+      const params = createUpdateBuilder<{ pk: string; sk: string; createdAt: string }>(
+        tableName,
+        key,
+        client
+      )
+        .setIfNotExists('createdAt', '2026-01-01T00:00:00Z')
+        .dbParams();
+
+      expect(params.UpdateExpression).toBe(
+        'SET #createdAt = if_not_exists(#createdAt, :createdAt_0)'
+      );
+    });
+  });
 });

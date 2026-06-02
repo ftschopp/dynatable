@@ -258,6 +258,7 @@ await table.entities.User.put({
 // UPDATE - Modify attributes
 await table.entities.User.update({ username: 'alice' })
   .set('name', 'Alice Johnson')
+  .setIfNotExists('createdAt', new Date().toISOString()) // write only on first insert
   .add('followerCount', 1)
   .remove('email')
   .returning('ALL_NEW')
