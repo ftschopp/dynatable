@@ -46,6 +46,26 @@ export interface UpdateBuilder<Model> extends Omit<OperationBuilder<Model>, 'dbP
   set(updates: Partial<Model>): UpdateBuilder<Model>;
 
   /**
+   * Conditionally sets an attribute only if it does not already exist on the
+   * item, using DynamoDB's `if_not_exists()` SET function. Emits
+   * `#attr = if_not_exists(#attr, :v)`.
+   *
+   * Primary use case: upsert patterns where some fields must be written only
+   * on first insert (immutable `createdAt`, `firstSeenAt`, initial counters).
+   *
+   * Restrictions enforced at `dbParams()` time:
+   * - The field must not participate in the primary-key template (PK is
+   *   immutable; the conditional write is meaningless).
+   * - The field must not participate in any secondary-index template,
+   *   because the resolved value is decided by DynamoDB at write time and
+   *   the index key cannot be recomputed safely.
+   * - The same attribute cannot also be targeted by `.set()` in the same
+   *   update — DynamoDB rejects overlapping document paths.
+   */
+  setIfNotExists(attr: keyof Model | AttrRef, value: any): UpdateBuilder<Model>;
+  setIfNotExists(updates: Partial<Model>): UpdateBuilder<Model>;
+
+  /**
    * Removes an attribute from the item
    */
   remove(attr: keyof Model | AttrRef): UpdateBuilder<Model>;

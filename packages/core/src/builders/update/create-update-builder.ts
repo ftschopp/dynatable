@@ -54,7 +54,14 @@ export function createUpdateBuilder<Model>(
   logger?: DynamoDBLogger,
   indexContext?: IndexContext,
   setInputs: Record<string, any> = {},
-  consumedCapacity?: 'INDEXES' | 'TOTAL' | 'NONE'
+  consumedCapacity?: 'INDEXES' | 'TOTAL' | 'NONE',
+  // Tracks attributes targeted by `.setIfNotExists()` separately from
+  // `setInputs`. Index recomputation reads `setInputs` to resolve template
+  // values; conditional writes can't supply a static value (DynamoDB picks
+  // current vs `:v` at write time), so they must NOT participate in template
+  // resolution — but the PK-template / index-template guards still need to
+  // see them to reject schema-incompatible usage.
+  setIfNotExistsInputs: Record<string, any> = {}
 ): UpdateBuilder<Model> {
   const conditions = [...prevConditions];
 
@@ -90,7 +97,8 @@ export function createUpdateBuilder<Model>(
         logger,
         indexContext,
         setInputs,
-        consumedCapacity
+        consumedCapacity,
+        setIfNotExistsInputs
       );
     },
 
@@ -131,7 +139,8 @@ export function createUpdateBuilder<Model>(
           logger,
           indexContext,
           newSetInputs,
-          consumedCapacity
+          consumedCapacity,
+          setIfNotExistsInputs
         );
       }
 
@@ -155,7 +164,76 @@ export function createUpdateBuilder<Model>(
         logger,
         indexContext,
         { ...setInputs, [attrName]: value },
-        consumedCapacity
+        consumedCapacity,
+        setIfNotExistsInputs
+      );
+    },
+
+    setIfNotExists(
+      attrOrUpdates: keyof Model | AttrRef | Partial<Model>,
+      value?: any
+    ) {
+      // Object form: treat as Partial<Model>. The AttrRef overload always
+      // passes a value, so it routes through the single-update path below.
+      if (
+        value === undefined &&
+        typeof attrOrUpdates === 'object' &&
+        attrOrUpdates !== null
+      ) {
+        const updates = attrOrUpdates as Partial<Model>;
+        const newActions: UpdateAction[] = [];
+        const newSetIfNotExistsInputs = { ...setIfNotExistsInputs };
+
+        for (const [attr, val] of Object.entries(updates)) {
+          const attrName = attr;
+          const valueName = getUniqueValueName(attrName);
+          newActions.push({
+            expression: `#${attrName} = if_not_exists(#${attrName}, :${valueName})`,
+            names: { [`#${attrName}`]: attrName },
+            values: { [`:${valueName}`]: val },
+          });
+          newSetIfNotExistsInputs[attrName] = val;
+        }
+
+        return createUpdateBuilder(
+          tableName,
+          key,
+          client,
+          conditions,
+          { ...updateActions, set: [...updateActions.set, ...newActions] },
+          returnMode,
+          valueCounter,
+          enableTimestamps,
+          logger,
+          indexContext,
+          setInputs,
+          consumedCapacity,
+          newSetIfNotExistsInputs
+        );
+      }
+
+      // Single update case
+      const attrName = normalizeAttr(attrOrUpdates as keyof Model | AttrRef);
+      const valueName = getUniqueValueName(attrName);
+      const action: UpdateAction = {
+        expression: `#${attrName} = if_not_exists(#${attrName}, :${valueName})`,
+        names: { [`#${attrName}`]: attrName },
+        values: { [`:${valueName}`]: value },
+      };
+      return createUpdateBuilder(
+        tableName,
+        key,
+        client,
+        conditions,
+        { ...updateActions, set: [...updateActions.set, action] },
+        returnMode,
+        valueCounter,
+        enableTimestamps,
+        logger,
+        indexContext,
+        setInputs,
+        consumedCapacity,
+        { ...setIfNotExistsInputs, [attrName]: value }
       );
     },
 
@@ -177,7 +255,8 @@ export function createUpdateBuilder<Model>(
         logger,
         indexContext,
         setInputs,
-        consumedCapacity
+        consumedCapacity,
+        setIfNotExistsInputs
       );
     },
 
@@ -201,7 +280,8 @@ export function createUpdateBuilder<Model>(
         logger,
         indexContext,
         setInputs,
-        consumedCapacity
+        consumedCapacity,
+        setIfNotExistsInputs
       );
     },
 
@@ -225,7 +305,8 @@ export function createUpdateBuilder<Model>(
         logger,
         indexContext,
         setInputs,
-        consumedCapacity
+        consumedCapacity,
+        setIfNotExistsInputs
       );
     },
 
@@ -242,7 +323,8 @@ export function createUpdateBuilder<Model>(
         logger,
         indexContext,
         setInputs,
-        consumedCapacity
+        consumedCapacity,
+        setIfNotExistsInputs
       );
     },
 
@@ -259,7 +341,8 @@ export function createUpdateBuilder<Model>(
         logger,
         indexContext,
         setInputs,
-        mode
+        mode,
+        setIfNotExistsInputs
       );
     },
 
@@ -277,6 +360,7 @@ export function createUpdateBuilder<Model>(
         // structured) — for remove/add/delete we read from the action's
         // attribute-name map.
         const setFields = Object.keys(setInputs);
+        const setIfNotExistsFields = Object.keys(setIfNotExistsInputs);
         const removeFields = updateActions.remove
           .map(actionAttrName)
           .filter((n): n is string => !!n);
@@ -292,15 +376,21 @@ export function createUpdateBuilder<Model>(
         // the user changes a field that participates in the PK/SK template,
         // the row's PK doesn't move (DynamoDB doesn't allow that) but the
         // attribute does — leaving an inconsistent row whose PK encodes the
-        // old value. Catch this on every op (.set / .remove / .add / .delete)
-        // before it leaves the process.
+        // old value. Catch this on every op (.set / .setIfNotExists /
+        // .remove / .add / .delete) before it leaves the process.
         const primaryKeyTemplateVars = new Set<string>();
         for (const keyDef of Object.values(indexContext.model.key)) {
           for (const v of extractTemplateVars(keyDef.value)) {
             primaryKeyTemplateVars.add(v);
           }
         }
-        const allTouched = [...setFields, ...removeFields, ...addFields, ...deleteFields];
+        const allTouched = [
+          ...setFields,
+          ...setIfNotExistsFields,
+          ...removeFields,
+          ...addFields,
+          ...deleteFields,
+        ];
         const pkConflicts = [
           ...new Set(allTouched.filter((f) => primaryKeyTemplateVars.has(f))),
         ];
@@ -319,6 +409,13 @@ export function createUpdateBuilder<Model>(
         // the new value, REMOVE strips the field entirely, and DELETE
         // mutates a Set without naming a scalar. Switching to .set(field,
         // newValue) lets the recompute path handle it correctly.
+        //
+        // Guard 3: .setIfNotExists() against a field used in a SECONDARY-index
+        // template. The resolved value is decided by DynamoDB at write time
+        // (current attr vs `:v`), so the recompute path cannot statically
+        // produce a value that's guaranteed consistent with the stored
+        // attribute. Allowing it would silently corrupt the index whenever
+        // the conditional write keeps the existing value.
         if (indexContext.model.index) {
           const indexTemplateVars = new Set<string>();
           for (const indexDef of Object.values(indexContext.model.index)) {
@@ -337,6 +434,21 @@ export function createUpdateBuilder<Model>(
                 `secondary-index template, and the affected index key cannot be ` +
                 `recomputed without an explicit new value. Use .set(field, ` +
                 `newValue) instead so the index key is recomputed atomically.`
+            );
+          }
+
+          const ifNotExistsGsiConflicts = [
+            ...new Set(setIfNotExistsFields.filter((f) => indexTemplateVars.has(f))),
+          ];
+          if (ifNotExistsGsiConflicts.length > 0) {
+            throw new Error(
+              `Cannot use .setIfNotExists() on field(s) ` +
+                `[${ifNotExistsGsiConflicts.join(', ')}] — they participate in a ` +
+                `secondary-index template, and if_not_exists() may keep the ` +
+                `existing value at write time, which would leave the index key ` +
+                `inconsistent with the stored attribute. Either restructure the ` +
+                `schema so this field is not part of any GSI template, or perform ` +
+                `a get + conditional .set() in two steps.`
             );
           }
         }
@@ -396,6 +508,34 @@ export function createUpdateBuilder<Model>(
           values: { ':updatedAt_ts': now },
         };
         actionsToProcess.set = [...actionsToProcess.set, timestampAction];
+      }
+
+      // Dedup guard: DynamoDB rejects overlapping document paths inside a
+      // SET expression (e.g. `SET #foo = :a, #foo = :b` → ValidationException
+      // "Two document paths overlap"). Catch the common footguns —
+      // .set().set() on the same key, .set() + .setIfNotExists() on the
+      // same key, and enableTimestamps + .set/.setIfNotExists('updatedAt')
+      // — before the network round-trip. Runs AFTER the timestamp injection
+      // so #updatedAt collisions are also reported.
+      const setActionNames = actionsToProcess.set
+        .map(actionAttrName)
+        .filter((n): n is string => !!n);
+      const duplicateSetAttrs = [
+        ...new Set(
+          setActionNames.filter(
+            (n, i) => setActionNames.indexOf(n) !== i
+          )
+        ),
+      ];
+      if (duplicateSetAttrs.length > 0) {
+        throw new Error(
+          `Update would emit multiple SET actions targeting the same ` +
+            `attribute(s) [${duplicateSetAttrs.join(', ')}]. DynamoDB rejects ` +
+            `overlapping document paths. Check that you're not combining ` +
+            `.set() and .setIfNotExists() on the same field, calling .set() ` +
+            `twice for the same key, or targeting an attribute that ` +
+            `enableTimestamps already manages (updatedAt).`
+        );
       }
 
       const buildSection = (
