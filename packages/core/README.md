@@ -265,6 +265,13 @@ await table.entities.User.update({ username: 'alice' })
   .where((attr, op) => op.gt(attr.followerCount, 0))
   .execute();
 
+// Note: `.set()`, `.setIfNotExists()`, `.add()` and `.delete()` reject
+// `undefined` values up front. DynamoDB can't encode `undefined` in
+// `ExpressionAttributeValues`, so the builder throws with the offending
+// keys instead of letting the request fail server-side. Use `.remove(attr)`
+// to clear an attribute, or filter `undefined` out of your payload before
+// calling `.set()`. `null` is allowed — it writes the DynamoDB `NULL` type.
+
 // DELETE - Remove item
 await table.entities.User.delete({ username: 'alice' })
   .returning('ALL_OLD')

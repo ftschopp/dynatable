@@ -29,6 +29,47 @@ function actionAttrName(action: UpdateAction): string | undefined {
 }
 
 /**
+ * Reject `undefined` before it reaches DynamoDB. SET / ADD / DELETE /
+ * setIfNotExists all encode the value into `ExpressionAttributeValues` — an
+ * `undefined` there is either silently dropped by the marshaller (when
+ * `removeUndefinedValues` is on, which then fails server-side with an unused
+ * expression value error) or rejected outright. Catching it at the call site
+ * gives a useful error and a pointer to the right primitive.
+ *
+ * `null` is intentionally allowed — DynamoDB has a NULL attribute type and
+ * the caller may legitimately want to write it.
+ */
+function assertNoUndefined(
+  method: 'set' | 'setIfNotExists' | 'add' | 'delete',
+  payload: Record<string, unknown> | { attr: string; value: unknown }
+): void {
+  const undefinedKeys =
+    'attr' in payload
+      ? payload.value === undefined
+        ? [payload.attr]
+        : []
+      : Object.entries(payload)
+          .filter(([, v]) => v === undefined)
+          .map(([k]) => k);
+
+  if (undefinedKeys.length === 0) return;
+
+  const guidance =
+    method === 'set'
+      ? `Use .remove(attr) to clear an attribute, or filter undefined out ` +
+        `before calling .set().`
+      : method === 'setIfNotExists'
+      ? `setIfNotExists requires a concrete value; omit the key or filter ` +
+        `it out.`
+      : `.${method}() requires a concrete value for each attribute.`;
+
+  throw new Error(
+    `.${method}() received undefined for key(s) [${undefinedKeys.join(', ')}]. ` +
+      `DynamoDB cannot encode undefined in ExpressionAttributeValues. ${guidance}`
+  );
+}
+
+/**
  * Creates an UpdateBuilder for an item key and table.
  *
  * When `indexContext` is provided, fields written via `.set()` that participate
@@ -113,6 +154,7 @@ export function createUpdateBuilder<Model>(
       ) {
         // Multiple updates case
         const updates = attrOrUpdates as Partial<Model>;
+        assertNoUndefined('set', updates as Record<string, unknown>);
         const newActions: UpdateAction[] = [];
         const newSetInputs = { ...setInputs };
 
@@ -146,6 +188,7 @@ export function createUpdateBuilder<Model>(
 
       // Single update case
       const attrName = normalizeAttr(attrOrUpdates as keyof Model | AttrRef);
+      assertNoUndefined('set', { attr: attrName, value });
       const valueName = getUniqueValueName(attrName);
       const action: UpdateAction = {
         expression: `#${attrName} = :${valueName}`,
@@ -181,6 +224,7 @@ export function createUpdateBuilder<Model>(
         attrOrUpdates !== null
       ) {
         const updates = attrOrUpdates as Partial<Model>;
+        assertNoUndefined('setIfNotExists', updates as Record<string, unknown>);
         const newActions: UpdateAction[] = [];
         const newSetIfNotExistsInputs = { ...setIfNotExistsInputs };
 
@@ -214,6 +258,7 @@ export function createUpdateBuilder<Model>(
 
       // Single update case
       const attrName = normalizeAttr(attrOrUpdates as keyof Model | AttrRef);
+      assertNoUndefined('setIfNotExists', { attr: attrName, value });
       const valueName = getUniqueValueName(attrName);
       const action: UpdateAction = {
         expression: `#${attrName} = if_not_exists(#${attrName}, :${valueName})`,
@@ -262,6 +307,7 @@ export function createUpdateBuilder<Model>(
 
     add(attr, value) {
       const attrName = normalizeAttr(attr);
+      assertNoUndefined('add', { attr: attrName, value });
       const valueName = getUniqueValueName(attrName);
       const action: UpdateAction = {
         expression: `#${attrName} :${valueName}`,
@@ -287,6 +333,7 @@ export function createUpdateBuilder<Model>(
 
     delete(attr, value) {
       const attrName = normalizeAttr(attr);
+      assertNoUndefined('delete', { attr: attrName, value });
       const valueName = getUniqueValueName(attrName);
       const action: UpdateAction = {
         expression: `#${attrName} :${valueName}`,
