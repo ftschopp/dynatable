@@ -1,3 +1,10 @@
+# @ftschopp/dynatable-core [2.3.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@2.2.1...@ftschopp/dynatable-core@2.3.0) (2026-06-03)
+
+
+### Features
+
+* **core:** add setDefined to UpdateBuilder ([#58](https://github.com/ftschopp/dynatable/issues/58)) ([851c0dc](https://github.com/ftschopp/dynatable/commit/851c0dc8ab6c6eed0555c874c6230d8997530808)), closes [#56](https://github.com/ftschopp/dynatable/issues/56) [#57](https://github.com/ftschopp/dynatable/issues/57)
+
 ## @ftschopp/dynatable-core [2.2.1](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@2.2.0...@ftschopp/dynatable-core@2.2.1) (2026-06-03)
 
 
