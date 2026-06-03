@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-core [2.2.1](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@2.2.0...@ftschopp/dynatable-core@2.2.1) (2026-06-03)
+
+
+### Bug Fixes
+
+* **core:** reject undefined in update actions with actionable error ([#56](https://github.com/ftschopp/dynatable/issues/56)) ([5b8bee9](https://github.com/ftschopp/dynatable/commit/5b8bee9e9c041abdbff1b2b97d1eaba16730f257)), closes [#55](https://github.com/ftschopp/dynatable/issues/55)
+
 # @ftschopp/dynatable-core [2.2.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@2.1.0...@ftschopp/dynatable-core@2.2.0) (2026-06-02)
 
 
