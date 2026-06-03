@@ -1176,4 +1176,104 @@ describe('UpdateBuilder', () => {
       );
     });
   });
+
+  describe('undefined-value guard', () => {
+    const key: Partial<TestModel> = { pk: 'USER#1', sk: 'USER#1' };
+
+    test('.set(attr, undefined) throws with actionable message', () => {
+      expect(() =>
+        createUpdateBuilder<TestModel>(tableName, key, client).set('name', undefined)
+      ).toThrow(/\.set\(\) received undefined for key\(s\) \[name\]/);
+    });
+
+    test('.set(attr, undefined) error mentions .remove and filtering', () => {
+      try {
+        createUpdateBuilder<TestModel>(tableName, key, client).set('name', undefined);
+        throw new Error('expected throw');
+      } catch (err) {
+        const msg = (err as Error).message;
+        expect(msg).toMatch(/\.remove\(attr\)/);
+        expect(msg).toMatch(/filter undefined/);
+      }
+    });
+
+    test('.set({ x: undefined, y: 1 }) throws and names only the undefined keys', () => {
+      expect(() =>
+        createUpdateBuilder<TestModel>(tableName, key, client).set({
+          name: 'Alice',
+          age: undefined,
+        })
+      ).toThrow(/\.set\(\) received undefined for key\(s\) \[age\]/);
+    });
+
+    test('.set({ x: undefined, y: undefined }) lists both keys', () => {
+      expect(() =>
+        createUpdateBuilder<TestModel>(tableName, key, client).set({
+          name: undefined,
+          age: undefined,
+        })
+      ).toThrow(/\[name, age\]/);
+    });
+
+    test('.set with all defined values still works', () => {
+      const params = createUpdateBuilder<TestModel>(tableName, key, client)
+        .set({ name: 'Alice', age: 30 })
+        .dbParams();
+      expect(params.UpdateExpression).toBe('SET #name = :name_0, #age = :age_1');
+    });
+
+    test('.set allows null (null is a valid DDB attribute type)', () => {
+      const params = createUpdateBuilder<TestModel>(tableName, key, client)
+        .set('name', null)
+        .dbParams();
+      expect(params.UpdateExpression).toBe('SET #name = :name_0');
+      expect(params.ExpressionAttributeValues).toEqual({ ':name_0': null });
+    });
+
+    test('.setIfNotExists(attr, undefined) throws', () => {
+      expect(() =>
+        createUpdateBuilder<TestModel>(tableName, key, client).setIfNotExists(
+          'name',
+          undefined
+        )
+      ).toThrow(/\.setIfNotExists\(\) received undefined for key\(s\) \[name\]/);
+    });
+
+    test('.setIfNotExists({ x: undefined }) throws', () => {
+      expect(() =>
+        createUpdateBuilder<TestModel>(tableName, key, client).setIfNotExists({
+          name: undefined,
+        })
+      ).toThrow(/\.setIfNotExists\(\) received undefined for key\(s\) \[name\]/);
+    });
+
+    test('.setIfNotExists error does NOT mention .remove (it would be wrong guidance)', () => {
+      try {
+        createUpdateBuilder<TestModel>(tableName, key, client).setIfNotExists(
+          'name',
+          undefined
+        );
+        throw new Error('expected throw');
+      } catch (err) {
+        const msg = (err as Error).message;
+        expect(msg).not.toMatch(/\.remove\(attr\)/);
+        expect(msg).toMatch(/omit the key/);
+      }
+    });
+
+    test('.add(attr, undefined) throws', () => {
+      expect(() =>
+        createUpdateBuilder<TestModel>(tableName, key, client).add(
+          'followerCount',
+          undefined
+        )
+      ).toThrow(/\.add\(\) received undefined for key\(s\) \[followerCount\]/);
+    });
+
+    test('.delete(attr, undefined) throws', () => {
+      expect(() =>
+        createUpdateBuilder<TestModel>(tableName, key, client).delete('tags', undefined)
+      ).toThrow(/\.delete\(\) received undefined for key\(s\) \[tags\]/);
+    });
+  });
 });
