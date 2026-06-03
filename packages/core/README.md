@@ -272,6 +272,20 @@ await table.entities.User.update({ username: 'alice' })
 // to clear an attribute, or filter `undefined` out of your payload before
 // calling `.set()`. `null` is allowed — it writes the DynamoDB `NULL` type.
 
+// UPSERT via setDefined - sync from an external system where undefined
+// means "this attribute no longer applies". Defined values go to SET,
+// undefined keys go to REMOVE. Internally composes `.set()` + `.remove()`,
+// so all guards (PK template, GSI templates, dedup, GSI key recomputation)
+// apply identically.
+await table.entities.User.update({ username: 'alice' })
+  .setDefined({
+    name: tamsRecord.name,           // SET
+    email: tamsRecord.email,         // may be undefined → REMOVE
+    lastSeenAt: new Date().toISOString(),
+  })
+  .setIfNotExists('createdAt', new Date().toISOString())
+  .execute();
+
 // DELETE - Remove item
 await table.entities.User.delete({ username: 'alice' })
   .returning('ALL_OLD')

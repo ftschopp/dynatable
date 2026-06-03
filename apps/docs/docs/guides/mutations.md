@@ -137,6 +137,10 @@ await table.entities.User.update({
 Both forms are equivalent. The object form is convenient when patching from a partial DTO. Any attribute name is accepted, including `name`.
 :::
 
+:::caution
+`.set()`, `.setIfNotExists()`, `.add()` and `.delete()` reject `undefined` values up front. DynamoDB cannot encode `undefined` in `ExpressionAttributeValues`, so the builder throws with the offending keys instead of letting the request fail server-side with an opaque `ValidationException`. Use `.remove(attr)` to clear an attribute, or filter `undefined` out of your payload before calling `.set()`. For the external-sync upsert pattern (where `undefined` means "clear this attribute"), use [`setDefined`](#set-defined-upsert-from-external-source) instead. `null` is allowed — it writes the DynamoDB `NULL` type.
+:::
+
 ### Set If Not Exists (Immutable on Upsert)
 
 Use `setIfNotExists` to write an attribute only on first insert. Maps to DynamoDB's `if_not_exists()` SET function: the value is kept if the attribute already exists on the item. The canonical case is an immutable `createdAt` timestamp on an upsert:
@@ -169,6 +173,35 @@ await table.entities.Order.update({
 
 :::note
 Combining `.set('foo', ...)` and `.setIfNotExists('foo', ...)` on the same attribute is rejected before the request leaves the process (DynamoDB would reject it as overlapping document paths).
+:::
+
+### Set Defined (Upsert from External Source)
+
+Use `setDefined` for the external-sync upsert pattern: defined fields are written via SET, keys whose value is `undefined` are removed from the item. `null` stays defined and writes the DynamoDB `NULL` type.
+
+This is the right tool when syncing from a system (cron job, third-party API, partial DTO) where a missing field in the source payload means **"this attribute no longer applies"** — as opposed to `.set()`, which is strict and rejects `undefined` because it cannot know whether the caller wanted to clear the attribute or skip it:
+
+```typescript
+const fields = {
+  name: tamsRecord.name,           // SET
+  email: tamsRecord.email,         // may be undefined → REMOVE
+  lastSeenAt: new Date().toISOString(),
+};
+
+await table.entities.User.update({ username: 'alice' })
+  .setDefined(fields)
+  .setIfNotExists('createdAt', new Date().toISOString())
+  .execute();
+```
+
+Internally, `setDefined` splits the payload and routes through `.set()` and `.remove()`, so every existing guard applies identically: primary-key template immutability, secondary-index template guards, dedup, and GSI key recomputation.
+
+:::caution
+Because `setDefined` routes `undefined` keys to `.remove()`, passing `undefined` for a field that participates in a secondary-index template surfaces the existing GSI guard: the index key cannot be recomputed without an explicit value, and the builder rejects the update. Either pass a concrete value for that field or restructure the schema so the field is not part of any GSI template.
+:::
+
+:::note
+`setDefined` is **opt-in by design**. `.set()` deliberately rejects `undefined` rather than auto-mapping to REMOVE, because `undefined` does not carry a single universal meaning across callers (an external-sync wants REMOVE; a partial PATCH wants no-op; a programmer bug should throw). A named method makes the intent explicit at the call site.
 :::
 
 ### Add (Increment/Decrement)
