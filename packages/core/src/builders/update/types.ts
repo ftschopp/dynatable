@@ -66,6 +66,29 @@ export interface UpdateBuilder<Model> extends Omit<OperationBuilder<Model>, 'dbP
   setIfNotExists(updates: Partial<Model>): UpdateBuilder<Model>;
 
   /**
+   * Upsert helper: writes attributes whose value is defined with SET, and
+   * removes attributes whose value is `undefined`. Equivalent to splitting
+   * the payload between `.set()` and `.remove()` at the call site, but
+   * makes the intent explicit at the API.
+   *
+   * Typical use case: syncing from an external system where a missing field
+   * in the source payload means "this attribute no longer applies" rather
+   * than "leave the existing value alone" — the latter is what `.set()`
+   * with `undefined` would imply, and it's a destructive footgun the strict
+   * `.set()` rightly rejects.
+   *
+   * Internally routes through `.set()` and `.remove()`, so every existing
+   * guard (primary-key template, secondary-index templates, dedup,
+   * GSI-key recomputation) applies identically — including the rejection
+   * of `.remove()` on fields used in a GSI template, which will surface as
+   * an error here whenever an `undefined` targets such a field.
+   *
+   * `null` is treated as a defined value and writes the DynamoDB `NULL`
+   * type — only `undefined` triggers the REMOVE branch.
+   */
+  setDefined(updates: Partial<Model>): UpdateBuilder<Model>;
+
+  /**
    * Removes an attribute from the item
    */
   remove(attr: keyof Model | AttrRef): UpdateBuilder<Model>;

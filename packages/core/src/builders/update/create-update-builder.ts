@@ -282,6 +282,33 @@ export function createUpdateBuilder<Model>(
       );
     },
 
+    setDefined(updates: Partial<Model>) {
+      // Split the payload, then route through the public `.set()` and
+      // `.remove()` paths so all of their guards apply unchanged: PK
+      // template immutability, GSI template guard 2 (which will reject
+      // any `undefined` targeting a GSI-template field), dedup, and the
+      // index-key recomputation triggered by `setInputs`. Composing the
+      // builder instead of re-emitting actions keeps the surface area
+      // of this method as close to zero as possible.
+      const defined: Record<string, unknown> = {};
+      const toRemove: string[] = [];
+      for (const [attr, val] of Object.entries(updates)) {
+        if (val === undefined) {
+          toRemove.push(attr);
+        } else {
+          defined[attr] = val;
+        }
+      }
+      let next: UpdateBuilder<Model> = build();
+      if (Object.keys(defined).length > 0) {
+        next = next.set(defined as Partial<Model>);
+      }
+      for (const attr of toRemove) {
+        next = next.remove(attr as keyof Model);
+      }
+      return next;
+    },
+
     remove(attr) {
       const attrName = normalizeAttr(attr);
       const action: UpdateAction = {

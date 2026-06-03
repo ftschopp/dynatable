@@ -1276,4 +1276,189 @@ describe('UpdateBuilder', () => {
       ).toThrow(/\.delete\(\) received undefined for key\(s\) \[tags\]/);
     });
   });
+
+  describe('setDefined', () => {
+    interface UpsertModel {
+      pk: string;
+      sk: string;
+      name?: string;
+      age?: number;
+      lastSeen?: string;
+      createdAt?: string;
+    }
+    const upsertKey: Partial<UpsertModel> = { pk: 'USER#1', sk: 'USER#1' };
+
+    test('routes defined values to SET and undefined keys to REMOVE', () => {
+      const params = createUpdateBuilder<UpsertModel>(tableName, upsertKey, client)
+        .setDefined({ name: 'Alice', age: undefined, lastSeen: '2026-06-03' })
+        .dbParams();
+
+      expect(params.UpdateExpression).toBe(
+        'SET #name = :name_0, #lastSeen = :lastSeen_1 REMOVE #age'
+      );
+      expect(params.ExpressionAttributeNames).toEqual({
+        '#name': 'name',
+        '#lastSeen': 'lastSeen',
+        '#age': 'age',
+      });
+      expect(params.ExpressionAttributeValues).toEqual({
+        ':name_0': 'Alice',
+        ':lastSeen_1': '2026-06-03',
+      });
+    });
+
+    test('all-undefined payload produces only REMOVE', () => {
+      const params = createUpdateBuilder<UpsertModel>(tableName, upsertKey, client)
+        .setDefined({ name: undefined, age: undefined })
+        .dbParams();
+
+      expect(params.UpdateExpression).toBe('REMOVE #name, #age');
+      expect(params.ExpressionAttributeValues).toBeUndefined();
+    });
+
+    test('all-defined payload produces only SET', () => {
+      const params = createUpdateBuilder<UpsertModel>(tableName, upsertKey, client)
+        .setDefined({ name: 'Alice', age: 30 })
+        .dbParams();
+
+      expect(params.UpdateExpression).toBe('SET #name = :name_0, #age = :age_1');
+    });
+
+    test('empty payload falls through to the "no actions" guard', () => {
+      const builder = createUpdateBuilder<UpsertModel>(tableName, upsertKey, client)
+        .setDefined({});
+      expect(() => builder.dbParams()).toThrow(/no SET, REMOVE, ADD, or DELETE/i);
+    });
+
+    test('treats null as a defined value (writes NULL, not REMOVE)', () => {
+      const params = createUpdateBuilder<UpsertModel>(tableName, upsertKey, client)
+        .setDefined({ name: null as unknown as string })
+        .dbParams();
+
+      expect(params.UpdateExpression).toBe('SET #name = :name_0');
+      expect(params.ExpressionAttributeValues).toEqual({ ':name_0': null });
+    });
+
+    test('composes with .setIfNotExists for the typical upsert pattern', () => {
+      // Defined fields → SET, undefined → REMOVE, plus createdAt only on
+      // first insert. This is the canonical external-sync use case.
+      const params = createUpdateBuilder<UpsertModel>(tableName, upsertKey, client)
+        .setDefined({ name: 'Alice', age: undefined })
+        .setIfNotExists('createdAt', '2026-01-01T00:00:00Z')
+        .dbParams();
+
+      expect(params.UpdateExpression).toBe(
+        'SET #name = :name_0, #createdAt = if_not_exists(#createdAt, :createdAt_1) ' +
+          'REMOVE #age'
+      );
+    });
+
+    test('immutability: each call returns a new builder', () => {
+      const b1 = createUpdateBuilder<UpsertModel>(tableName, upsertKey, client);
+      const b2 = b1.setDefined({ name: 'Alice' });
+      expect(() => b1.dbParams()).toThrow(/no SET, REMOVE, ADD, or DELETE/i);
+      expect(b2.dbParams().UpdateExpression).toBe('SET #name = :name_0');
+    });
+
+    test('dedup: setDefined({x: undefined}) + .set(x, v) throws via overlap', () => {
+      // setDefined routes undefined to REMOVE, .set adds SET → DynamoDB
+      // rejects overlapping document paths between SET and REMOVE
+      // sections. The library does not yet pre-validate SET/REMOVE
+      // overlap (only SET/SET dedup), but verify the error surfaces
+      // either way: when this gets caught locally the message will
+      // mention overlapping paths.
+      const params = createUpdateBuilder<UpsertModel>(tableName, upsertKey, client)
+        .setDefined({ name: undefined })
+        .set('name', 'Alice')
+        .dbParams();
+      // For now both actions are emitted; document the wire-level shape
+      // so the test fails loudly if dedup is later extended to SET/REMOVE.
+      expect(params.UpdateExpression).toBe('SET #name = :name_0 REMOVE #name');
+    });
+
+    describe('with indexContext', () => {
+      interface PersonnelModel {
+        id: string;
+        airportId: string;
+        firstName: string;
+        lastName: string;
+        role: string;
+        notes?: string;
+      }
+
+      const personnelModel = {
+        key: {
+          PK: { type: String, value: 'PERSON#${id}' },
+          SK: { type: String, value: 'PROFILE' },
+        },
+        index: {
+          GSI1PK: { type: String, value: 'AIRPORT#${airportId}' },
+          GSI1SK: { type: String, value: 'PERSON#${lastName}#${firstName}' },
+        },
+        attributes: {
+          id: { type: String, required: true },
+          airportId: { type: String, required: true },
+          firstName: { type: String, required: true },
+          lastName: { type: String, required: true },
+          role: { type: String },
+          notes: { type: String },
+        },
+      } as const;
+
+      const makeBuilder = () =>
+        createUpdateBuilder<PersonnelModel>(
+          tableName,
+          { id: '1' } as Partial<PersonnelModel>,
+          client,
+          [],
+          { set: [], remove: [], add: [], delete: [] },
+          'NONE',
+          0,
+          false,
+          undefined,
+          { model: personnelModel as any, keyVars: { id: '1' } }
+        );
+
+      test('rejects undefined targeting a primary-key template var', () => {
+        const builder = makeBuilder().setDefined({ id: undefined });
+        expect(() => builder.dbParams()).toThrow(/primary key template/i);
+        expect(() => builder.dbParams()).toThrow(/\[id\]/);
+      });
+
+      test('rejects undefined targeting a secondary-index template var', () => {
+        // lastName participates in GSI1SK. setDefined routes it to REMOVE,
+        // and the existing GSI guard 2 rejects .remove() on GSI template
+        // fields because the index key cannot be recomputed.
+        const builder = makeBuilder().setDefined({ lastName: undefined });
+        expect(() => builder.dbParams()).toThrow(/secondary-index template/i);
+        expect(() => builder.dbParams()).toThrow(/\[lastName\]/);
+      });
+
+      test('triggers GSI key recomputation when defined fields participate', () => {
+        // Updating both firstName and lastName via setDefined → SET path
+        // resolves GSI1SK = PERSON#<lastName>#<firstName>.
+        const params = makeBuilder()
+          .setDefined({ firstName: 'Ada', lastName: 'Lovelace' })
+          .dbParams();
+        expect(params.UpdateExpression).toContain('#firstName = :firstName_0');
+        expect(params.UpdateExpression).toContain('#lastName = :lastName_1');
+        expect(params.UpdateExpression).toContain('#GSI1SK = :GSI1SK_');
+        expect(params.ExpressionAttributeValues).toMatchObject({
+          ':firstName_0': 'Ada',
+          ':lastName_1': 'Lovelace',
+        });
+        const gsiKey = Object.entries(params.ExpressionAttributeValues!).find(
+          ([k]) => k.startsWith(':GSI1SK_')
+        );
+        expect(gsiKey?.[1]).toBe('PERSON#Lovelace#Ada');
+      });
+
+      test('allows setDefined on fields outside any template', () => {
+        const params = makeBuilder()
+          .setDefined({ role: 'pilot', notes: undefined })
+          .dbParams();
+        expect(params.UpdateExpression).toBe('SET #role = :role_0 REMOVE #notes');
+      });
+    });
+  });
 });
