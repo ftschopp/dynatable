@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-core [2.3.1](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@2.3.0...@ftschopp/dynatable-core@2.3.1) (2026-06-05)
+
+
+### Bug Fixes
+
+* **core:** stamp _type discriminator on update() so upserts stay visible ([#59](https://github.com/ftschopp/dynatable/issues/59)) ([f5f6116](https://github.com/ftschopp/dynatable/commit/f5f61163c61f298fc45dbf2a32dd7352b5231976))
+
 # @ftschopp/dynatable-core [2.3.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@2.2.1...@ftschopp/dynatable-core@2.3.0) (2026-06-03)
 
 
