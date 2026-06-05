@@ -176,7 +176,26 @@ export const createEntityAPI = <Model extends ModelDefinition>(
         fullKey as Partial<InferModel<Model>>,
         client,
         [],
-        { set: [], remove: [], add: [], delete: [] },
+        // Seed a SET for the `_type` discriminator, mirroring how put() stamps
+        // it onto the item and how query()/scan() hand-write the `_type` filter.
+        // UpdateItem is an upsert — a create-via-update on a non-existent key
+        // would otherwise produce an item without `_type`, invisible to the
+        // type-filtered query()/scan(). The builder stays agnostic of `_type`:
+        // it just processes whatever actions it is handed. A fixed `:_type`
+        // placeholder keeps it out of the value-name counter so it never
+        // perturbs the numbering of the caller's own actions.
+        {
+          set: [
+            {
+              expression: '#_type = :_type',
+              names: { '#_type': '_type' },
+              values: { ':_type': modelName },
+            },
+          ],
+          remove: [],
+          add: [],
+          delete: [],
+        },
         'NONE',
         0,
         timestamps,

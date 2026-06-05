@@ -526,14 +526,35 @@ describe('Should test dbParams function builder', () => {
       SK: 'USER#juanca',
     });
     expect(params.UpdateExpression).toContain('ADD #followerCount :followerCount_0');
-    expect(params.UpdateExpression).toContain('SET #updatedAt = :updatedAt_ts');
+    expect(params.UpdateExpression).toContain('#updatedAt = :updatedAt_ts');
+    // The entity API stamps the `_type` discriminator on every update so that
+    // create-via-update (UpdateItem is an upsert) stays visible to the
+    // type-filtered query()/scan().
+    expect(params.UpdateExpression).toContain('#_type = :_type');
     expect(params.ExpressionAttributeNames).toMatchObject({
       '#followerCount': 'followerCount',
       '#updatedAt': 'updatedAt',
+      '#_type': '_type',
     });
     expect(params.ExpressionAttributeValues).toMatchObject({
       ':followerCount_0': 1,
+      ':_type': 'User',
     });
+  });
+
+  test('UPDATE stamps _type so create-via-update stays query/scan visible', async () => {
+    // UpdateItem creates the item when the key does not exist (upsert). Without
+    // the seeded `_type`, that new item would be invisible to query()/scan(),
+    // which filter by `#_type = :_type`. Mirrors how put() stamps `_type`.
+    const params = await table.entities.User.update({ username: 'newuser' })
+      .set('name', 'Brand New')
+      .dbParams();
+
+    expect(params.UpdateExpression).toContain('#_type = :_type');
+    expect(params.ExpressionAttributeNames).toMatchObject({ '#_type': '_type' });
+    expect(params.ExpressionAttributeValues).toMatchObject({ ':_type': 'User' });
+    // Fixed `:_type` placeholder must not perturb the caller's value numbering.
+    expect(params.ExpressionAttributeValues).toMatchObject({ ':name_0': 'Brand New' });
   });
 
   test('UPDATE User - set name and increment followerCount', async () => {
@@ -550,7 +571,7 @@ describe('Should test dbParams function builder', () => {
       PK: 'USER#juanca',
       SK: 'USER#juanca',
     });
-    expect(params.UpdateExpression).toContain('SET #name = :name_0');
+    expect(params.UpdateExpression).toContain('#name = :name_0');
     expect(params.UpdateExpression).toContain('ADD #followerCount :followerCount_1');
     expect(params.UpdateExpression).toContain('#updatedAt = :updatedAt_ts');
     expect(params.ExpressionAttributeNames).toMatchObject({
@@ -580,7 +601,7 @@ describe('Should test dbParams function builder', () => {
       SK: 'PHOTO#01K16ZP43BRX67DG50SHGZ11DS',
     });
     expect(params.UpdateExpression).toContain('ADD #likesCount :likesCount_0');
-    expect(params.UpdateExpression).toContain('SET #updatedAt = :updatedAt_ts');
+    expect(params.UpdateExpression).toContain('#updatedAt = :updatedAt_ts');
     expect(params.ConditionExpression).toMatch(/#commentCount >= :commentCount_\d+/);
     expect(params.ExpressionAttributeNames).toMatchObject({
       '#likesCount': 'likesCount',
@@ -604,7 +625,7 @@ describe('Should test dbParams function builder', () => {
     expect(params.UpdateExpression).toContain(
       'ADD #likesCount :likesCount_0, #commentCount :commentCount_1'
     );
-    expect(params.UpdateExpression).toContain('SET #updatedAt = :updatedAt_ts');
+    expect(params.UpdateExpression).toContain('#updatedAt = :updatedAt_ts');
     expect(params.ExpressionAttributeNames).toMatchObject({
       '#likesCount': 'likesCount',
       '#commentCount': 'commentCount',
@@ -631,7 +652,7 @@ describe('Should test dbParams function builder', () => {
       PK: 'PC#photo123',
       SK: 'COMMENT#comment456',
     });
-    expect(params.UpdateExpression).toContain('SET #content = :content_0');
+    expect(params.UpdateExpression).toContain('#content = :content_0');
     expect(params.UpdateExpression).toContain('#updatedAt = :updatedAt_ts');
     expect(params.ConditionExpression).toMatch(/#commentingUsername = :commentingUsername_\d+/);
     expect(params.ReturnValues).toBe('UPDATED_NEW');

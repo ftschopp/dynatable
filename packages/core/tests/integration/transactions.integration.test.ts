@@ -145,7 +145,7 @@ describe('Transactions Integration Tests - Instagram Schema', () => {
       );
       // Should also include updatedAt timestamp
       expect(params.TransactItems![1]?.Update!.UpdateExpression).toContain(
-        'SET #updatedAt = :updatedAt_ts'
+        '#updatedAt = :updatedAt_ts'
       );
     });
 
@@ -229,7 +229,7 @@ describe('Transactions Integration Tests - Instagram Schema', () => {
       );
       // Should also include updatedAt timestamp
       expect(params.TransactItems![1]?.Update!.UpdateExpression).toContain(
-        'SET #updatedAt = :updatedAt_ts'
+        '#updatedAt = :updatedAt_ts'
       );
     });
 
@@ -317,7 +317,7 @@ describe('Transactions Integration Tests - Instagram Schema', () => {
         'ADD #likesCount :likesCount_0'
       );
       expect(params.TransactItems![1]?.Update!.UpdateExpression).toContain(
-        'SET #updatedAt = :updatedAt_ts'
+        '#updatedAt = :updatedAt_ts'
       );
       expect(params.TransactItems![1]?.Update!.ExpressionAttributeValues).toHaveProperty(
         ':likesCount_0'
