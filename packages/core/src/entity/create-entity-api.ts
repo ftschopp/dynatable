@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { InferInput, InferKeyInput, InferModel, ModelDefinition } from '@/core/types';
 import { applyPostDefaults, resolveKeys } from '@/utils/model-utils';
@@ -15,6 +14,7 @@ import {
   WriteRequest,
 } from '@/builders';
 import { EntityAPI, EntityAPIOptions } from './types';
+import { buildUpsertSeedActions } from './transforms/build-upsert-seed';
 import { withMiddleware } from './middleware/with-middleware';
 import { createCleanKeysMiddleware } from './middleware/factories';
 import { validateKeyFields } from './validation/key-validation';
@@ -176,22 +176,13 @@ export const createEntityAPI = <Model extends ModelDefinition>(
         fullKey as Partial<InferModel<Model>>,
         client,
         [],
-        // Seed a SET for the `_type` discriminator, mirroring how put() stamps
-        // it onto the item and how query()/scan() hand-write the `_type` filter.
-        // UpdateItem is an upsert — a create-via-update on a non-existent key
-        // would otherwise produce an item without `_type`, invisible to the
-        // type-filtered query()/scan(). The builder stays agnostic of `_type`:
-        // it just processes whatever actions it is handed. A fixed `:_type`
-        // placeholder keeps it out of the value-name counter so it never
-        // perturbs the numbering of the caller's own actions.
+        // UpdateItem is an upsert: seed the entity's identity columns (`_type`
+        // discriminator + primary-key template vars) so a create-via-update
+        // round-trips with its `id` intact and stays visible to the
+        // type-filtered query()/scan(). See buildUpsertSeedActions for the full
+        // rationale and why these never trip the builder's PK-immutability guard.
         {
-          set: [
-            {
-              expression: '#_type = :_type',
-              names: { '#_type': '_type' },
-              values: { ':_type': modelName },
-            },
-          ],
+          set: buildUpsertSeedActions(model, modelName, key as Record<string, unknown>),
           remove: [],
           add: [],
           delete: [],
