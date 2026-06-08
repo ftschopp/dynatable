@@ -557,6 +557,36 @@ describe('Should test dbParams function builder', () => {
     expect(params.ExpressionAttributeValues).toMatchObject({ ':name_0': 'Brand New' });
   });
 
+  test('UPDATE materializes primary-key template vars so upserts round-trip', async () => {
+    // PK/SK are `USER#${username}`, so on a create-via-update the raw
+    // `username` would stay embedded in PK/SK and never become its own column.
+    // The entity API seeds `SET #username = :_key_username` so an upserted item
+    // round-trips with `username` intact (and survives cleanInternalKeys, which
+    // strips PK/SK without reconstructing the template vars). Mirrors how put()
+    // materializes the full validated model.
+    const params = await table.entities.User.update({ username: 'newuser' })
+      .set('name', 'Brand New')
+      .dbParams();
+
+    expect(params.UpdateExpression).toContain('#username = :_key_username');
+    expect(params.ExpressionAttributeNames).toMatchObject({ '#username': 'username' });
+    expect(params.ExpressionAttributeValues).toMatchObject({
+      ':_key_username': 'newuser',
+    });
+    // Fixed `:_key_<attr>` placeholder must not perturb the caller's numbering.
+    expect(params.ExpressionAttributeValues).toMatchObject({ ':name_0': 'Brand New' });
+  });
+
+  test('UPDATE seeded key var does not trip the PK-template immutability guard', async () => {
+    // The seeded `#username = :_key_username` writes the same value already
+    // encoded in the key, so it must NOT be treated as a forbidden attempt to
+    // mutate a PK-template field — that guard only inspects the caller's
+    // `.set()` payload. Building params must succeed without throwing.
+    expect(() =>
+      table.entities.User.update({ username: 'newuser' }).set('name', 'X').dbParams()
+    ).not.toThrow();
+  });
+
   test('UPDATE User - set name and increment followerCount', async () => {
     const params = await table.entities.User.update({
       username: 'juanca',
