@@ -1,3 +1,10 @@
+## @ftschopp/dynatable-core [2.3.2](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@2.3.1...@ftschopp/dynatable-core@2.3.2) (2026-06-08)
+
+
+### Bug Fixes
+
+* **core:** materialize primary-key template vars on update() upserts ([#60](https://github.com/ftschopp/dynatable/issues/60)) ([425ec39](https://github.com/ftschopp/dynatable/commit/425ec396b9cb58898575e0fa2ef9cd5d9317a1ce))
+
 ## @ftschopp/dynatable-core [2.3.1](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@2.3.0...@ftschopp/dynatable-core@2.3.1) (2026-06-05)
 
 
