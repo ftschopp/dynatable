@@ -1,6 +1,9 @@
 ---
 sidebar_position: 1
 slug: /
+title: Introduction
+description: Learn Dynatable — a type-safe, functional TypeScript library for Amazon DynamoDB with end-to-end type inference, single-table design, a fluent query builder, and safe schema migrations.
+keywords: [dynamodb, typescript, single-table design, type-safe, aws sdk v3, query builder, migrations]
 ---
 
 # Introduction

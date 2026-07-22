@@ -1,27 +1,462 @@
 /**
- * CSS files with the .module.css suffix will be treated as CSS modules
- * and scoped locally.
+ * Homepage — dark dev-tool landing.
+ * Scoped CSS module; brand tokens come from custom.css.
  */
 
-.heroBanner {
-  padding: 4rem 0;
+/* ------------------------------------------------------------------ *
+ * Hero
+ * ------------------------------------------------------------------ */
+.hero {
+  position: relative;
+  overflow: hidden;
+  padding: 5rem 0 3.5rem;
+  background: var(--dt-hero-bg);
+  border-bottom: 1px solid var(--dt-border);
+}
+
+.heroGlow {
+  position: absolute;
+  top: -30%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 900px;
+  height: 600px;
+  background: radial-gradient(closest-side, rgba(99, 102, 241, 0.28), rgba(34, 211, 238, 0.08), transparent);
+  filter: blur(20px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.heroInner {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 3rem;
+  align-items: center;
+}
+
+.heroCopy {
+  max-width: 37rem;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.35rem 0.85rem;
+  border-radius: 999px;
+  border: 1px solid var(--dt-border-strong);
+  background: var(--dt-surface);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--ifm-font-color-base);
+  margin-bottom: 1.5rem;
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+.badge:hover {
+  text-decoration: none;
+  border-color: var(--ifm-color-primary);
+  transform: translateY(-1px);
+  color: var(--ifm-font-color-base);
+}
+.badgeDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dt-cyan);
+  box-shadow: 0 0 0 3px rgba(34, 211, 238, 0.2);
+}
+.badgeArrow {
+  color: var(--dt-text-muted);
+}
+
+.heroTitle {
+  font-size: clamp(2.1rem, 4vw, 3rem);
+  line-height: 1.18;
+  letter-spacing: -0.015em;
+  font-weight: 800;
+  margin-bottom: 1.5rem;
+  text-wrap: balance;
+}
+
+.heroSubtitle {
+  font-size: 1.15rem;
+  line-height: 1.6;
+  color: var(--dt-text-muted);
+  margin-bottom: 2rem;
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  margin-bottom: 1.75rem;
+}
+
+/* Install command pill */
+.install {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  font-family: var(--dt-font-mono);
+  font-size: 0.9rem;
+  padding: 0.7rem 0.7rem 0.7rem 1rem;
+  border-radius: 12px;
+  border: 1px solid var(--dt-border-strong);
+  background: var(--dt-surface-2);
+  color: var(--ifm-font-color-base);
+  cursor: pointer;
+  transition: border-color 0.2s ease;
+}
+.install:hover {
+  border-color: var(--ifm-color-primary);
+}
+.installPrompt {
+  color: var(--dt-cyan);
+  font-weight: 700;
+}
+.installText {
+  color: var(--ifm-heading-color);
+}
+.installCopy {
+  margin-left: 0.3rem;
+  font-family: var(--dt-font-sans);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.3rem 0.7rem;
+  border-radius: 8px;
+  background: var(--dt-gradient);
+  color: #fff;
+}
+
+/* Code window */
+.heroVisual {
+  min-width: 0;
+}
+
+.codeWindow {
+  border-radius: 16px;
+  border: 1px solid var(--dt-border-strong);
+  background: var(--dt-window-bg);
+  overflow: hidden;
+  box-shadow: 0 30px 80px -30px rgba(4, 6, 30, 0.65);
+}
+
+.codeWindowBar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.7rem 1rem;
+  background: var(--dt-window-header);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.dot[data-c='red'] {
+  background: #ff5f57;
+}
+.dot[data-c='yellow'] {
+  background: #febc2e;
+}
+.dot[data-c='green'] {
+  background: #28c840;
+}
+.codeWindowFile {
+  margin-left: 0.5rem;
+  font-family: var(--dt-font-mono);
+  font-size: 0.78rem;
+  color: var(--dt-text-muted);
+}
+
+/* Flatten the inner Docusaurus code block so it fills the window */
+.codeWindow :global(.theme-code-block),
+.codeWindow :global([class*='codeBlockContainer']) {
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.codeWindow :global(pre) {
+  border-radius: 0 !important;
+  margin: 0 !important;
+  font-size: 0.82rem;
+}
+
+/* ------------------------------------------------------------------ *
+ * Trust strip
+ * ------------------------------------------------------------------ */
+.trust {
+  position: relative;
+  z-index: 1;
+  margin-top: 3.5rem;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--dt-border);
+}
+.trustItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
+  gap: 0.25rem;
+}
+.trustValue {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: var(--ifm-heading-color);
+  letter-spacing: -0.03em;
+}
+.trustLabel {
+  font-size: 0.85rem;
+  color: var(--dt-text-muted);
+}
+
+/* ------------------------------------------------------------------ *
+ * Generic section
+ * ------------------------------------------------------------------ */
+.section {
+  padding: 5rem 0;
+}
+.sectionAlt {
+  background: var(--dt-surface-2);
+  border-top: 1px solid var(--dt-border);
+  border-bottom: 1px solid var(--dt-border);
+}
+.sectionHead {
+  max-width: 40rem;
+  margin: 0 auto 3rem;
+  text-align: center;
+}
+.eyebrow {
+  display: inline-block;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ifm-color-primary);
+  margin-bottom: 0.75rem;
+}
+.sectionTitle {
+  font-size: clamp(1.9rem, 3.5vw, 2.5rem);
+  font-weight: 800;
+  margin-bottom: 1rem;
+}
+.sectionLead {
+  font-size: 1.1rem;
+  line-height: 1.6;
+  color: var(--dt-text-muted);
+  margin: 0;
+}
+
+/* ------------------------------------------------------------------ *
+ * Split section (Migrations showcase)
+ * ------------------------------------------------------------------ */
+.split {
+  display: grid;
+  grid-template-columns: 1fr 1.05fr;
+  gap: 3.5rem;
+  align-items: center;
+}
+.splitCopy {
+  max-width: 34rem;
+}
+.splitCopy .sectionTitle {
+  margin-top: 0.25rem;
+}
+.splitCopy .heroActions {
+  margin-top: 2rem;
+  margin-bottom: 0;
+}
+.splitVisual {
+  min-width: 0;
+}
+
+.inlineCode {
+  display: inline-block;
+  margin: 0 0.15rem;
+  padding: 0.1rem 0.4rem;
+  font-size: 0.85em;
+  border-radius: 6px;
+  background: var(--dt-surface-2);
+  border: 1px solid var(--dt-border);
+  color: var(--ifm-color-primary);
+  word-break: break-word;
+}
+
+.checkList {
+  list-style: none;
+  margin: 1.75rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.85rem;
+}
+.checkList li {
+  position: relative;
+  padding-left: 2rem;
+  color: var(--ifm-font-color-base);
+  line-height: 1.5;
+}
+.checkList li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 20px;
+  height: 20px;
+  /* gradient rounded badge + white check, embedded so it stays crisp at any DPI */
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cdefs%3E%3ClinearGradient id='g' x1='0' y1='0' x2='24' y2='24' gradientUnits='userSpaceOnUse'%3E%3Cstop stop-color='%236366F1'/%3E%3Cstop offset='1' stop-color='%2322D3EE'/%3E%3C/linearGradient%3E%3C/defs%3E%3Crect width='24' height='24' rx='7' fill='url(%23g)'/%3E%3Cpath d='M17 8.5l-6 6-3-3' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E")
+    no-repeat center / contain;
+}
+
+/* ------------------------------------------------------------------ *
+ * Comparison
+ * ------------------------------------------------------------------ */
+.compareGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+.compareCol {
+  min-width: 0;
+}
+.compareTag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  margin-bottom: 0.85rem;
+}
+.compareTagBefore {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
+}
+.compareTagBefore::before {
+  content: '✕';
+}
+.compareTagAfter {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.12);
+}
+.compareTagAfter::before {
+  content: '✓';
+}
+
+/* ------------------------------------------------------------------ *
+ * Packages
+ * ------------------------------------------------------------------ */
+.pkgCard {
+  display: block;
+  height: 100%;
+  padding: 2rem;
+  border-radius: 18px;
+  border: 1px solid var(--dt-border);
+  background: var(--dt-surface);
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
+}
+.pkgCard:hover {
+  text-decoration: none;
+  border-color: var(--ifm-color-primary);
+  transform: translateY(-3px);
+  box-shadow: 0 24px 60px -30px rgba(99, 102, 241, 0.55);
+}
+.pkgTagline {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--ifm-color-primary);
+  margin-bottom: 0.5rem;
+}
+.pkgName {
+  font-family: var(--dt-font-mono);
+  font-size: 1.15rem;
+  margin-bottom: 0.75rem;
+  word-break: break-word;
+}
+.pkgDesc {
+  color: var(--dt-text-muted);
+  line-height: 1.6;
+  margin-bottom: 1.25rem;
+}
+.pkgInstall {
+  display: inline-block;
+  font-size: 0.82rem;
+  padding: 0.5rem 0.85rem;
+  border-radius: 8px;
+  background: var(--dt-surface-2);
+  border: 1px solid var(--dt-border);
+  color: var(--ifm-font-color-base);
+}
+
+/* ------------------------------------------------------------------ *
+ * Final CTA
+ * ------------------------------------------------------------------ */
+.cta {
+  padding: 6rem 0;
   position: relative;
   overflow: hidden;
 }
-
-@media screen and (max-width: 996px) {
-  .heroBanner {
-    padding: 2rem;
-  }
+.ctaInner {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  max-width: 40rem;
 }
-
-.buttons {
-  display: flex;
-  align-items: center;
+.ctaInner {
+  margin-left: auto;
+  margin-right: auto;
+}
+.ctaTitle {
+  font-size: clamp(2rem, 4vw, 2.8rem);
+  font-weight: 800;
+  margin-bottom: 1rem;
+}
+.ctaLead {
+  font-size: 1.15rem;
+  color: var(--dt-text-muted);
+  margin-bottom: 2rem;
+}
+.cta .heroActions {
   justify-content: center;
 }
 
-.codeExample {
-  padding: 4rem 0;
+/* ------------------------------------------------------------------ *
+ * Responsive
+ * ------------------------------------------------------------------ */
+@media (max-width: 996px) {
+  .heroInner,
+  .split {
+    grid-template-columns: 1fr;
+    gap: 2.5rem;
+  }
+  .heroCopy,
+  .splitCopy {
+    max-width: none;
+  }
+  .compareGrid {
+    grid-template-columns: 1fr;
+  }
+  .trust {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1.5rem 1rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .hero {
+    padding: 3rem 0 2.5rem;
+  }
+  .install {
+    max-width: 100%;
+    overflow-x: auto;
+  }
 }

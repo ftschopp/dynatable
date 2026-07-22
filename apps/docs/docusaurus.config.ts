@@ -4,10 +4,34 @@ import type * as Preset from '@docusaurus/preset-classic';
 
 // This runs in Node.js - Don't use client-side code here (browser APIs, JSX...)
 
+const SITE_URL = 'https://ftschopp.github.io/dynatable/';
+const SITE_DESCRIPTION =
+  'A type-safe, functional TypeScript library for Amazon DynamoDB — end-to-end type inference, single-table design, a fluent query builder, and safe schema migrations.';
+
+// Schema.org structured data for rich search results.
+const structuredData = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'Dynatable',
+  applicationCategory: 'DeveloperApplication',
+  operatingSystem: 'Node.js, Cross-platform',
+  programmingLanguage: 'TypeScript',
+  description: SITE_DESCRIPTION,
+  url: SITE_URL,
+  softwareVersion: '2',
+  license: 'https://opensource.org/licenses/MIT',
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+  author: { '@type': 'Person', name: 'ftschopp', url: 'https://github.com/ftschopp' },
+  sameAs: [
+    'https://github.com/ftschopp/dynatable',
+    'https://www.npmjs.com/package/@ftschopp/dynatable-core',
+  ],
+};
+
 const config: Config = {
   title: 'Dynatable',
-  tagline: 'Type-safe, functional DynamoDB library for TypeScript',
-  favicon: 'img/favicon.ico',
+  tagline: 'Type-safe DynamoDB for TypeScript — with first-class single-table design',
+  favicon: 'img/favicon.svg',
 
   // Set the production url of your site here
   url: 'https://ftschopp.github.io',
@@ -41,32 +65,36 @@ const config: Config = {
 
   themes: ['@docusaurus/theme-mermaid'],
 
+  // Brand typography: Inter for UI, JetBrains Mono for code.
+  headTags: [
+    {
+      tagName: 'link',
+      attributes: { rel: 'preconnect', href: 'https://fonts.googleapis.com' },
+    },
+    {
+      tagName: 'link',
+      attributes: { rel: 'preconnect', href: 'https://fonts.gstatic.com', crossorigin: 'anonymous' },
+    },
+    // Structured data for SEO / rich results.
+    {
+      tagName: 'script',
+      attributes: { type: 'application/ld+json' },
+      innerHTML: JSON.stringify(structuredData),
+    },
+  ],
+  stylesheets: [
+    'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap',
+  ],
+
   presets: [
     [
       'classic',
       {
         docs: {
           sidebarPath: './sidebars.ts',
-          // Please change this to your repo.
-          // Remove this to remove the "edit this page" links.
-          editUrl:
-            'https://github.com/facebook/docusaurus/tree/main/packages/create-docusaurus/templates/shared/',
+          editUrl: 'https://github.com/ftschopp/dynatable/tree/main/apps/docs/',
         },
-        blog: {
-          showReadingTime: true,
-          feedOptions: {
-            type: ['rss', 'atom'],
-            xslt: true,
-          },
-          // Please change this to your repo.
-          // Remove this to remove the "edit this page" links.
-          editUrl:
-            'https://github.com/facebook/docusaurus/tree/main/packages/create-docusaurus/templates/shared/',
-          // Useful options to enforce blogging best practices
-          onInlineTags: 'warn',
-          onInlineAuthors: 'warn',
-          onUntruncatedBlogPosts: 'warn',
-        },
+        blog: false,
         theme: {
           customCss: './src/css/custom.css',
         },
@@ -75,8 +103,24 @@ const config: Config = {
   ],
 
   themeConfig: {
-    // Replace with your project's social card
-    image: 'img/docusaurus-social-card.jpg',
+    image: 'img/dynatable-og.png',
+    metadata: [
+      {
+        name: 'keywords',
+        content:
+          'dynamodb, typescript, type-safe, single-table design, aws, aws sdk v3, orm, odm, query builder, schema migrations, serverless, ddb',
+      },
+      { name: 'description', content: SITE_DESCRIPTION },
+      { property: 'og:type', content: 'website' },
+      { property: 'og:site_name', content: 'Dynatable' },
+      { property: 'og:image:width', content: '1200' },
+      { property: 'og:image:height', content: '630' },
+      { name: 'twitter:image:alt', content: 'Dynatable — type-safe DynamoDB for TypeScript' },
+    ],
+    colorMode: {
+      defaultMode: 'dark',
+      respectPrefersColorScheme: false,
+    },
     navbar: {
       title: 'Dynatable',
       logo: {
@@ -91,9 +135,27 @@ const config: Config = {
           label: 'Docs',
         },
         {
-          href: 'https://github.com/ftschopp/dynatable',
-          label: 'GitHub',
+          to: '/docs/getting-started/quick-start',
+          label: 'Quick Start',
+          position: 'left',
+        },
+        {
+          to: '/docs/migrations',
+          label: 'Migrations',
+          position: 'left',
+        },
+        {
+          href: 'https://www.npmjs.com/package/@ftschopp/dynatable-core',
+          label: 'npm',
           position: 'right',
+          className: 'navbar-npm-link',
+        },
+        {
+          href: 'https://github.com/ftschopp/dynatable',
+          label: 'Star',
+          position: 'right',
+          className: 'navbar-star',
+          'aria-label': 'Star Dynatable on GitHub',
         },
       ],
     },
@@ -164,11 +226,13 @@ const config: Config = {
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} Dynatable. Built with Docusaurus.`,
+      copyright: `Copyright © ${new Date().getFullYear()} Dynatable · MIT Licensed`,
     },
     prism: {
-      theme: prismThemes.github,
-      darkTheme: prismThemes.dracula,
+      theme: prismThemes.oneLight,
+      darkTheme: prismThemes.nightOwl,
+      defaultLanguage: 'typescript',
+      additionalLanguages: ['bash', 'json'],
     },
   } satisfies Preset.ThemeConfig,
 };
