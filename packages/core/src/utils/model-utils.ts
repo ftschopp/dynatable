@@ -111,6 +111,20 @@ export const computeIndexUpdates = <M extends ModelDefinition>(
 };
 
 /**
+ * Produces a fresh copy of a schema default so two items created without that
+ * field never share the same array/object instance.
+ *
+ * A non-function `default` declared in the schema (e.g. `{ type: Array,
+ * default: [] }`) is a single value that lives on the schema object. Assigning
+ * it by reference means every item defaulted from it aliases that one instance
+ * — mutating one item's field (`item.history.push(...)`) then poisons the
+ * schema default and every later create. Primitives are immutable and returned
+ * as-is; arrays/objects/Dates are structurally cloned.
+ */
+const cloneDefault = (value: unknown): unknown =>
+  value !== null && typeof value === 'object' ? structuredClone(value) : value;
+
+/**
  * Applies default and generated values to validated input
  */
 export const applyPostDefaults = <M extends ModelDefinition>(
@@ -128,7 +142,7 @@ export const applyPostDefaults = <M extends ModelDefinition>(
       } else if (generate === 'uuid') {
         result[key] = crypto.randomUUID();
       } else if (attr.default !== undefined) {
-        result[key] = typeof attr.default === 'function' ? attr.default() : attr.default;
+        result[key] = typeof attr.default === 'function' ? attr.default() : cloneDefault(attr.default);
       }
     }
   }
