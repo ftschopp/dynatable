@@ -111,6 +111,20 @@ export const computeIndexUpdates = <M extends ModelDefinition>(
 };
 
 /**
+ * Produces a fresh copy of a schema default so two items created without that
+ * field never share the same array/object instance.
+ *
+ * A non-function `default` declared in the schema (e.g. `{ type: Array,
+ * default: [] }`) is a single value that lives on the schema object. Assigning
+ * it by reference means every item defaulted from it aliases that one instance
+ * — mutating one item's field (`item.history.push(...)`) then poisons the
+ * schema default and every later create. Primitives are immutable and returned
+ * as-is; arrays/objects/Dates are structurally cloned.
+ */
+const cloneDefault = (value: unknown): unknown =>
+  value !== null && typeof value === 'object' ? structuredClone(value) : value;
+
+/**
  * Applies default and generated values to validated input
  */
 export const applyPostDefaults = <M extends ModelDefinition>(
@@ -128,7 +142,7 @@ export const applyPostDefaults = <M extends ModelDefinition>(
       } else if (generate === 'uuid') {
         result[key] = crypto.randomUUID();
       } else if (attr.default !== undefined) {
-        result[key] = typeof attr.default === 'function' ? attr.default() : attr.default;
+        result[key] = typeof attr.default === 'function' ? attr.default() : cloneDefault(attr.default);
       }
     }
   }
@@ -150,6 +164,46 @@ export const applyPostDefaults = <M extends ModelDefinition>(
   }
 
   return result as InferModel<M>;
+};
+
+/**
+ * Recursively converts `Date` instances to ISO 8601 strings so a value can be
+ * marshalled by `@aws-sdk/lib-dynamodb`, which has no native Date type: by
+ * default it throws `Unsupported type`, and with `convertClassInstanceToMap`
+ * it silently writes an empty map `{}` (total data loss).
+ *
+ * `type: Date` attributes are coerced to `Date` objects at validation time
+ * (`z.coerce.date()`), so without this step they never round-trip. Storing the
+ * ISO string also keeps dates lexicographically sortable, which is how they're
+ * meant to be modeled as sort keys in DynamoDB.
+ *
+ * Recurses into arrays and plain objects only — other class instances are left
+ * untouched — mirroring {@link stripInternalKeys}. Runs on write (put /
+ * batchWrite); reads coerce the ISO string back to a `Date` via the model's
+ * Zod schema.
+ */
+export const serializeWriteValues = <T>(value: T): T => {
+  if (value instanceof Date) {
+    return value.toISOString() as unknown as T;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => serializeWriteValues(item)) as unknown as T;
+  }
+
+  if (
+    value !== null &&
+    typeof value === 'object' &&
+    Object.getPrototypeOf(value) === Object.prototype
+  ) {
+    const out: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value)) {
+      out[key] = serializeWriteValues(val);
+    }
+    return out as T;
+  }
+
+  return value;
 };
 
 /**

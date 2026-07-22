@@ -1,6 +1,6 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { InferInput, InferKeyInput, InferModel, ModelDefinition } from '@/core/types';
-import { applyPostDefaults, resolveKeys } from '@/utils/model-utils';
+import { applyPostDefaults, resolveKeys, serializeWriteValues } from '@/utils/model-utils';
 import { modelToZod } from '@/utils/zod-utils';
 import {
   createGetBuilder,
@@ -73,12 +73,17 @@ export const createEntityAPI = <Model extends ModelDefinition>(
         timestamps,
       });
 
+      // Serialize Date attributes (coerced to Date objects by Zod) to ISO
+      // strings so lib-dynamodb can marshal them; a raw Date throws or is
+      // written as an empty map. See serializeWriteValues.
+      const serialized = serializeWriteValues(withDefaults);
+
       // Resolve keys again with defaults (including GSI index keys)
-      const fullKey = resolveKeys(model, withDefaults, 'both');
+      const fullKey = resolveKeys(model, serialized, 'both');
 
       // Combine keys and data into full item, adding _type field
       const fullItem = {
-        ...withDefaults,
+        ...serialized,
         ...fullKey,
         _type: modelName, // Add entity type identifier
       };
@@ -257,12 +262,16 @@ export const createEntityAPI = <Model extends ModelDefinition>(
           timestamps,
         });
 
+        // Serialize Date attributes to ISO strings so lib-dynamodb can marshal
+        // them (see serializeWriteValues).
+        const serialized = serializeWriteValues(withDefaults);
+
         // Resolve keys again with defaults (including GSI index keys)
-        const fullKey = resolveKeys(model, withDefaults, 'both');
+        const fullKey = resolveKeys(model, serialized, 'both');
 
         // Combine keys and data into full item, adding _type field
         return {
-          ...withDefaults,
+          ...serialized,
           ...fullKey,
           _type: modelName, // Add entity type identifier
         };
