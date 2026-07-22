@@ -585,3 +585,55 @@ describe('computeIndexUpdates', () => {
     expect(result.missing).toEqual([]);
   });
 });
+
+describe('applyPostDefaults - mutable default isolation', () => {
+  const modelWithMutableDefaults: ModelDefinition = {
+    key: {
+      PK: { type: String, value: 'TX#${id}' },
+      SK: { type: String, value: 'TX#${id}' },
+    },
+    attributes: {
+      id: { type: String, required: true },
+      history: { type: Array, default: [], items: { type: String } },
+      meta: { type: Object, default: {}, schema: {} },
+    },
+  };
+
+  test('each item gets its own array instance (no shared reference)', () => {
+    const a = applyPostDefaults(modelWithMutableDefaults, { id: '1' }) as any;
+    const b = applyPostDefaults(modelWithMutableDefaults, { id: '2' }) as any;
+
+    expect(a.history).toEqual([]);
+    expect(b.history).toEqual([]);
+    expect(a.history).not.toBe(b.history);
+  });
+
+  test('mutating one item does not leak into the next create or the schema', () => {
+    const a = applyPostDefaults(modelWithMutableDefaults, { id: '1' }) as any;
+    a.history.push('mutated');
+    a.meta.touched = true;
+
+    const b = applyPostDefaults(modelWithMutableDefaults, { id: '2' }) as any;
+
+    // The regression: without cloning, b.history would be ['mutated'].
+    expect(b.history).toEqual([]);
+    expect(b.meta).toEqual({});
+    // The schema default itself must stay pristine.
+    expect((modelWithMutableDefaults.attributes.history as any).default).toEqual([]);
+    expect((modelWithMutableDefaults.attributes.meta as any).default).toEqual({});
+  });
+
+  test('function defaults are still invoked per item (unchanged behavior)', () => {
+    const model: ModelDefinition = {
+      key: { PK: { type: String, value: 'K#${id}' }, SK: { type: String, value: 'K#${id}' } },
+      attributes: {
+        id: { type: String, required: true },
+        tags: { type: Array, default: () => ['fresh'], items: { type: String } },
+      },
+    };
+    const a = applyPostDefaults(model, { id: '1' }) as any;
+    const b = applyPostDefaults(model, { id: '2' }) as any;
+    expect(a.tags).toEqual(['fresh']);
+    expect(a.tags).not.toBe(b.tags);
+  });
+});
