@@ -3,6 +3,7 @@ import {
   applyPostDefaults,
   collectInternalKeyColumns,
   computeIndexUpdates,
+  serializeWriteValues,
   stripInternalKeys,
 } from './model-utils';
 import { IndexesDefinition, ModelDefinition } from '../core/types';
@@ -583,5 +584,46 @@ describe('computeIndexUpdates', () => {
       GSI1SK: 'PERSON#Lovelace#Ada',
     });
     expect(result.missing).toEqual([]);
+  });
+});
+
+describe('serializeWriteValues', () => {
+  test('converts a top-level Date to an ISO 8601 string', () => {
+    const date = new Date('2026-01-15T10:00:00.000Z');
+    expect(serializeWriteValues({ createdAt: date })).toEqual({
+      createdAt: '2026-01-15T10:00:00.000Z',
+    });
+  });
+
+  test('converts Dates nested inside objects and arrays', () => {
+    const d1 = new Date('2026-01-01T00:00:00.000Z');
+    const d2 = new Date('2026-02-02T00:00:00.000Z');
+    const result = serializeWriteValues({
+      profile: { lastLogin: d1 },
+      events: [{ at: d2 }, 'plain'],
+    });
+    expect(result).toEqual({
+      profile: { lastLogin: '2026-01-01T00:00:00.000Z' },
+      events: [{ at: '2026-02-02T00:00:00.000Z' }, 'plain'],
+    });
+  });
+
+  test('leaves primitives, null and non-Date values untouched', () => {
+    const input = { s: 'x', n: 1, b: true, z: null, arr: [1, 2] };
+    expect(serializeWriteValues(input)).toEqual(input);
+  });
+
+  test('produces a marshallable object — no Date reaches the SDK', () => {
+    // Direct proof of the bug: @aws-sdk/util-dynamodb.marshall rejects a raw
+    // Date ("Unsupported type"). After serialization it round-trips cleanly.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { marshall } = require('@aws-sdk/util-dynamodb');
+    const item = { id: 'a', when: new Date('2026-03-03T03:03:03.000Z') };
+
+    expect(() => marshall(item)).toThrow();
+    expect(() => marshall(serializeWriteValues(item))).not.toThrow();
+    expect(marshall(serializeWriteValues(item)).when).toEqual({
+      S: '2026-03-03T03:03:03.000Z',
+    });
   });
 });

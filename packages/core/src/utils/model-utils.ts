@@ -153,6 +153,46 @@ export const applyPostDefaults = <M extends ModelDefinition>(
 };
 
 /**
+ * Recursively converts `Date` instances to ISO 8601 strings so a value can be
+ * marshalled by `@aws-sdk/lib-dynamodb`, which has no native Date type: by
+ * default it throws `Unsupported type`, and with `convertClassInstanceToMap`
+ * it silently writes an empty map `{}` (total data loss).
+ *
+ * `type: Date` attributes are coerced to `Date` objects at validation time
+ * (`z.coerce.date()`), so without this step they never round-trip. Storing the
+ * ISO string also keeps dates lexicographically sortable, which is how they're
+ * meant to be modeled as sort keys in DynamoDB.
+ *
+ * Recurses into arrays and plain objects only — other class instances are left
+ * untouched — mirroring {@link stripInternalKeys}. Runs on write (put /
+ * batchWrite); reads coerce the ISO string back to a `Date` via the model's
+ * Zod schema.
+ */
+export const serializeWriteValues = <T>(value: T): T => {
+  if (value instanceof Date) {
+    return value.toISOString() as unknown as T;
+  }
+
+  if (Array.isArray(value)) {
+    return value.map((item) => serializeWriteValues(item)) as unknown as T;
+  }
+
+  if (
+    value !== null &&
+    typeof value === 'object' &&
+    Object.getPrototypeOf(value) === Object.prototype
+  ) {
+    const out: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(value)) {
+      out[key] = serializeWriteValues(val);
+    }
+    return out as T;
+  }
+
+  return value;
+};
+
+/**
  * Default fallback list used when the caller doesn't pass a schema-derived
  * set. Covers only the conventional primary-key column names (PK, SK) and
  * the entity-type discriminator. Real consumers should pass the
