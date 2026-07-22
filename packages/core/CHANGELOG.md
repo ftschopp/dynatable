@@ -1,3 +1,11 @@
+## @ftschopp/dynatable-core [2.3.3](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@2.3.2...@ftschopp/dynatable-core@2.3.3) (2026-07-22)
+
+
+### Bug Fixes
+
+* **core:** clone array/object schema defaults so items don't share a reference ([#63](https://github.com/ftschopp/dynatable/issues/63)) ([dd62fe1](https://github.com/ftschopp/dynatable/commit/dd62fe1b90b0836f500ad4ade243bc0c2c300cb8))
+* **core:** prevent placeholder collision between update .where() and .set() ([#61](https://github.com/ftschopp/dynatable/issues/61)) ([396eef3](https://github.com/ftschopp/dynatable/commit/396eef33b78ed966ffafb1f9669dfc789d93b40d))
+
 ## @ftschopp/dynatable-core [2.3.2](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-core@2.3.1...@ftschopp/dynatable-core@2.3.2) (2026-06-08)
 
 
