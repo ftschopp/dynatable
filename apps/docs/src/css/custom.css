@@ -1,30 +1,312 @@
 /**
- * Any CSS included here will be global. The classic template
- * bundles Infima by default. Infima is a CSS framework designed to
- * work well for content-centric websites.
+ * Dynatable design system.
+ * Dark-first developer-tool aesthetic. Brand: indigo -> cyan.
+ * Global styles + Infima variable overrides live here.
  */
 
-/* You can override the default Infima variables here. */
+/* ------------------------------------------------------------------ *
+ * Fonts
+ * ------------------------------------------------------------------ */
 :root {
-  --ifm-color-primary: #2e8555;
-  --ifm-color-primary-dark: #29784c;
-  --ifm-color-primary-darker: #277148;
-  --ifm-color-primary-darkest: #205d3b;
-  --ifm-color-primary-light: #33925d;
-  --ifm-color-primary-lighter: #359962;
-  --ifm-color-primary-lightest: #3cad6e;
-  --ifm-code-font-size: 95%;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+  --dt-font-sans:
+    'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif;
+  --dt-font-mono:
+    'JetBrains Mono', 'SFMono-Regular', ui-monospace, 'Fira Code', Menlo, Consolas, monospace;
+
+  --ifm-font-family-base: var(--dt-font-sans);
+  --ifm-font-family-monospace: var(--dt-font-mono);
+  --ifm-heading-font-family: var(--dt-font-sans);
+
+  /* Brand accents used across the site */
+  --dt-indigo: #6366f1;
+  --dt-indigo-bright: #818cf8;
+  --dt-cyan: #22d3ee;
+  --dt-violet: #a855f7;
+  --dt-gradient: linear-gradient(120deg, var(--dt-indigo) 0%, var(--dt-cyan) 100%);
+  --dt-gradient-soft: linear-gradient(120deg, #6366f1 0%, #22d3ee 100%);
+
+  --ifm-heading-font-weight: 700;
+  --ifm-font-weight-semibold: 600;
 }
 
-/* For readability concerns, you should choose a lighter palette in dark mode. */
+/* ------------------------------------------------------------------ *
+ * Light palette (indigo primary)
+ * ------------------------------------------------------------------ */
+:root {
+  --ifm-color-primary: #4f46e5;
+  --ifm-color-primary-dark: #4338ca;
+  --ifm-color-primary-darker: #3f31c0;
+  --ifm-color-primary-darkest: #3629a3;
+  --ifm-color-primary-light: #6366f1;
+  --ifm-color-primary-lighter: #7c7cf4;
+  --ifm-color-primary-lightest: #a5b4fc;
+
+  --ifm-code-font-size: 92%;
+  --ifm-code-background: #f4f4fb;
+  --ifm-code-border-radius: 6px;
+  --docusaurus-highlighted-code-line-bg: rgba(99, 102, 241, 0.1);
+
+  --ifm-navbar-height: 4rem;
+  --ifm-navbar-background-color: rgba(255, 255, 255, 0.72);
+  --ifm-navbar-shadow: none;
+
+  --ifm-background-color: #ffffff;
+  --ifm-background-surface-color: #ffffff;
+
+  --ifm-button-border-radius: 10px;
+  --ifm-global-radius: 10px;
+
+  --dt-hero-bg: radial-gradient(60% 60% at 50% 0%, #eef0ff 0%, #ffffff 70%);
+  --dt-surface: #ffffff;
+  --dt-surface-2: #f7f8fc;
+  --dt-border: rgba(15, 18, 45, 0.08);
+  --dt-border-strong: rgba(15, 18, 45, 0.14);
+  --dt-text-muted: #5a5f73;
+  --dt-window-bg: #0e1020;
+  --dt-window-header: #171a2e;
+}
+
+/* ------------------------------------------------------------------ *
+ * Dark palette (brighter indigo on deep indigo-black)
+ * ------------------------------------------------------------------ */
 [data-theme='dark'] {
-  --ifm-color-primary: #25c2a0;
-  --ifm-color-primary-dark: #21af90;
-  --ifm-color-primary-darker: #1fa588;
-  --ifm-color-primary-darkest: #1a8870;
-  --ifm-color-primary-light: #29d5b0;
-  --ifm-color-primary-lighter: #32d8b4;
-  --ifm-color-primary-lightest: #4fddbf;
-  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+  --ifm-color-primary: #818cf8;
+  --ifm-color-primary-dark: #6366f1;
+  --ifm-color-primary-darker: #5457ef;
+  --ifm-color-primary-darkest: #4f46e5;
+  --ifm-color-primary-light: #a5b4fc;
+  --ifm-color-primary-lighter: #b7c2fd;
+  --ifm-color-primary-lightest: #d3dbfe;
+
+  --ifm-background-color: #08090f;
+  --ifm-background-surface-color: #0e1020;
+  --ifm-navbar-background-color: rgba(8, 9, 15, 0.72);
+
+  --ifm-code-background: #12142a;
+  --docusaurus-highlighted-code-line-bg: rgba(129, 140, 248, 0.15);
+
+  --ifm-font-color-base: #d7dae8;
+  --ifm-heading-color: #f2f3fb;
+  --ifm-toc-border-color: rgba(255, 255, 255, 0.08);
+
+  --dt-hero-bg: radial-gradient(65% 55% at 50% -5%, #1a1d3a 0%, #0a0b14 55%, #08090f 100%);
+  --dt-surface: #0e1020;
+  --dt-surface-2: #12142a;
+  --dt-border: rgba(255, 255, 255, 0.08);
+  --dt-border-strong: rgba(255, 255, 255, 0.14);
+  --dt-text-muted: #9aa0b8;
+  --dt-window-bg: #0b0d1a;
+  --dt-window-header: #14172b;
+}
+
+/* ------------------------------------------------------------------ *
+ * Base
+ * ------------------------------------------------------------------ */
+html {
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  letter-spacing: -0.011em;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.025em;
+}
+
+::selection {
+  background: rgba(99, 102, 241, 0.28);
+}
+
+/* Scrollbar */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--dt-border-strong) transparent;
+}
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background: var(--dt-border-strong);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+/* ------------------------------------------------------------------ *
+ * Navbar — sticky glass
+ * ------------------------------------------------------------------ */
+.navbar {
+  backdrop-filter: saturate(180%) blur(16px);
+  -webkit-backdrop-filter: saturate(180%) blur(16px);
+  border-bottom: 1px solid var(--dt-border);
+}
+
+.navbar__title {
+  font-weight: 700;
+  font-size: 1.15rem;
+  letter-spacing: -0.03em;
+}
+
+.navbar__logo {
+  height: 1.9rem;
+}
+
+.navbar__link {
+  font-weight: 500;
+}
+
+/* "Star on GitHub" button in navbar — octocat + label, no star count */
+.navbar-star {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin-left: 0.35rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 9px;
+  border: 1px solid var(--dt-border-strong);
+  font-weight: 600;
+  line-height: 1;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.15s ease;
+}
+.navbar-star:hover {
+  border-color: var(--ifm-color-primary);
+  background: var(--dt-surface-2);
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+/* Drop the external-link arrow Docusaurus appends to keep the button clean */
+.navbar-star svg {
+  display: none;
+}
+.navbar-star::before {
+  content: '';
+  width: 17px;
+  height: 17px;
+  flex: none;
+  background: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2 0 1.9 1.2 1.9 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8 0 3.2.9.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1 .9 2.2v3.3c0 .3.1.7.8.6A12 12 0 0 0 12 .3'/%3E%3C/svg%3E")
+    no-repeat center / contain;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M12 .3a12 12 0 0 0-3.8 23.4c.6.1.8-.3.8-.6v-2c-3.3.7-4-1.6-4-1.6-.6-1.4-1.4-1.8-1.4-1.8-1-.7.1-.7.1-.7 1.2 0 1.9 1.2 1.9 1.2 1 1.8 2.8 1.3 3.5 1 0-.8.4-1.3.7-1.6-2.7-.3-5.5-1.3-5.5-6 0-1.2.5-2.3 1.3-3.1-.2-.4-.6-1.6 0-3.2 0 0 1-.3 3.4 1.2a11.5 11.5 0 0 1 6 0c2.3-1.5 3.3-1.2 3.3-1.2.6 1.6.2 2.8 0 3.2.9.8 1.3 1.9 1.3 3.2 0 4.6-2.8 5.6-5.5 5.9.5.4.9 1 .9 2.2v3.3c0 .3.1.7.8.6A12 12 0 0 0 12 .3'/%3E%3C/svg%3E")
+    no-repeat center / contain;
+}
+
+/* npm pill link in navbar */
+.navbar-npm-link {
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ *
+ * Buttons
+ * ------------------------------------------------------------------ */
+.button {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.button--primary {
+  background: var(--dt-gradient);
+  border: none;
+  color: #fff;
+  box-shadow: 0 6px 24px -8px rgba(99, 102, 241, 0.7);
+}
+.button--primary:hover {
+  color: #fff;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 34px -8px rgba(99, 102, 241, 0.85);
+}
+
+/* Infima ships `.button.button--secondary { color: gray-900 }` (two classes),
+   which is unreadable on our dark surface. Match its specificity to win. */
+.button.button--secondary {
+  background: var(--dt-surface);
+  border: 1px solid var(--dt-border-strong);
+  color: var(--ifm-heading-color);
+}
+.button.button--secondary:hover {
+  border-color: var(--ifm-color-primary);
+  color: var(--ifm-heading-color);
+  transform: translateY(-1px);
+}
+
+/* ------------------------------------------------------------------ *
+ * Cards, code, links
+ * ------------------------------------------------------------------ */
+.card {
+  border: 1px solid var(--dt-border);
+  background: var(--dt-surface);
+  border-radius: 16px;
+  transition:
+    border-color 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+.card:hover {
+  border-color: var(--dt-border-strong);
+  transform: translateY(-2px);
+}
+
+div[class^='codeBlockContainer'],
+.theme-code-block {
+  border-radius: 14px;
+  border: 1px solid var(--dt-border);
+  box-shadow: 0 12px 40px -24px rgba(2, 4, 20, 0.6);
+}
+
+a {
+  font-weight: 500;
+}
+
+/* Table of contents / sidebar polish */
+.menu__link--active {
+  font-weight: 600;
+}
+.table-of-contents__link--active {
+  font-weight: 600;
+}
+
+/* Docs main heading gradient underline accent */
+.markdown h1:first-child {
+  font-size: 2.4rem;
+}
+
+/* Gradient text helper */
+.dt-gradient-text {
+  background: var(--dt-gradient);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* Announcement bar */
+div[class^='announcementBar'] {
+  --site-announcement-bar-stripe-color1: transparent;
+  background: var(--dt-gradient);
+  color: #fff;
+  font-weight: 600;
+  border: none;
+}
+div[class^='announcementBar'] a {
+  color: #fff;
+  text-decoration: underline;
+}
+
+/* Footer */
+.footer--dark {
+  --ifm-footer-background-color: #06070d;
+  border-top: 1px solid var(--dt-border);
 }
