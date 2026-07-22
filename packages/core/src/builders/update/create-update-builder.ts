@@ -29,6 +29,22 @@ function actionAttrName(action: UpdateAction): string | undefined {
 }
 
 /**
+ * Counts how many ExpressionAttributeValues placeholders a condition tree
+ * introduces. Each leaf operator advances the opBuilder's counter once per
+ * value it emits (`eq` → 1, `between` → 2, `in` → N, `exists`/`notExists` → 0);
+ * combinators (AND/OR/NOT) emit none of their own. The total therefore equals
+ * how far the shared placeholder counter advanced while building the tree —
+ * exactly how much the update builder must advance its own `valueCounter` so a
+ * later `.set()` on the same attribute never reuses a condition placeholder.
+ */
+function countConditionValues(cond: Condition): number {
+  if (cond.children && cond.children.length > 0) {
+    return cond.children.reduce((n, child) => n + countConditionValues(child), 0);
+  }
+  return cond.values ? Object.keys(cond.values).length : 0;
+}
+
+/**
  * Reject `undefined` before it reaches DynamoDB. SET / ADD / DELETE /
  * setIfNotExists all encode the value into `ExpressionAttributeValues` — an
  * `undefined` there is either silently dropped by the marshaller (when
@@ -124,8 +140,17 @@ export function createUpdateBuilder<Model>(
           return { name: prop };
         },
       });
-      const opBuilder = createOpBuilder();
+      // Seed the condition's placeholder counter from THIS builder's
+      // valueCounter so condition values (`:status_0`) share one numbering
+      // space with the SET/ADD/DELETE action values that draw from the same
+      // counter. Then advance valueCounter past the values this condition
+      // consumed so a subsequent `.set()` on the same attribute gets a fresh
+      // placeholder. Without this, `.where(eq(status,'pending')).set('status',
+      // 'active')` emitted `:status_0` twice and the merge in dbParams()
+      // silently kept one value — writing the condition's (old) value.
+      const opBuilder = createOpBuilder(valueCounter);
       const condition = fn(attrs, opBuilder);
+      const consumed = countConditionValues(condition);
       return createUpdateBuilder(
         tableName,
         key,
@@ -133,7 +158,7 @@ export function createUpdateBuilder<Model>(
         [...conditions, condition],
         updateActions,
         returnMode,
-        valueCounter,
+        valueCounter + consumed,
         enableTimestamps,
         logger,
         indexContext,

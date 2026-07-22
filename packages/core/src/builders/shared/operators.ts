@@ -3,9 +3,15 @@ import { OpBuilder } from './types';
 /**
  * Creates a scoped OpBuilder with its own counter for unique value placeholders.
  * Each builder instance maintains isolated state to prevent naming conflicts.
+ *
+ * @param startCounter - Initial value for the placeholder counter. Defaults to
+ *   0 for standalone use (query/scan/get, where conditions are the only source
+ *   of value placeholders). The update builder passes its own `valueCounter`
+ *   here so condition placeholders (`:status_0`) share one numbering space with
+ *   the SET/ADD/DELETE action placeholders and can never collide with them.
  */
-export function createOpBuilder(): OpBuilder {
-  let valueCounter = 0;
+export function createOpBuilder(startCounter = 0): OpBuilder {
+  let valueCounter = startCounter;
 
   /**
    * Generates a unique value placeholder name within this builder's scope
