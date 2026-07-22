@@ -1,3 +1,10 @@
+# @ftschopp/dynatable-migrations [2.1.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@2.0.0...@ftschopp/dynatable-migrations@2.1.0) (2026-07-22)
+
+
+### Features
+
+* update dependencies to latest across the monorepo ([#65](https://github.com/ftschopp/dynatable/issues/65)) ([43b9fa2](https://github.com/ftschopp/dynatable/commit/43b9fa23f46c9301ea2cd5a34487ecca1c1a45b2))
+
 # @ftschopp/dynatable-migrations [2.0.0](https://github.com/ftschopp/dynatable/compare/@ftschopp/dynatable-migrations@1.3.2...@ftschopp/dynatable-migrations@2.0.0) (2026-05-11)
 
 
