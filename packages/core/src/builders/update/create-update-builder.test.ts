@@ -587,16 +587,14 @@ describe('UpdateBuilder', () => {
       expect(() => builder.dbParams()).toThrow(/no SET, REMOVE, ADD, or DELETE/i);
     });
 
-    test('same attribute appears in both .where() and .set() — known placeholder collision', () => {
-      // KNOWN BUG: the opBuilder created inside .where() has its own
-      // counter starting at 0, independent of the update builder's
-      // valueCounter. So `.where(op.eq(attr.status, 'pending'))` emits
-      // `:status_0` *and* the next `.set('status', 'active')` also
-      // emits `:status_0`, with the second value silently overwriting
-      // the first when the values map is merged.
-      //
-      // This test documents the current state so a fix can flip the
-      // assertions without rewriting the scenario. See follow-up issue.
+    test('same attribute in .where() and .set() uses distinct placeholders (no collision)', () => {
+      // REGRESSION: the opBuilder inside .where() used to start its own
+      // counter at 0, independent of the update builder's valueCounter, so
+      // `.where(op.eq(attr.status, 'pending'))` and the next
+      // `.set('status', 'active')` both emitted `:status_0`. When dbParams()
+      // merged the maps, one value silently overwrote the other and the
+      // optimistic-lock update wrote back the OLD value. The fix seeds the
+      // condition counter from valueCounter, so the two get distinct names.
       const params = createUpdateBuilder<TestModel>(
         tableName,
         { pk: 'USER#1', sk: 'USER#1' } as Partial<TestModel>,
@@ -606,17 +604,57 @@ describe('UpdateBuilder', () => {
         .set('status', 'active')
         .dbParams();
 
-      expect(params.UpdateExpression).toMatch(/^SET #status = :status_\d+$/);
-      expect(params.ConditionExpression).toMatch(/#status = :status_\d+/);
+      // The condition claims :status_0; the SET gets the next slot, :status_1.
+      expect(params.ConditionExpression).toBe('#status = :status_0');
+      expect(params.UpdateExpression).toBe('SET #status = :status_1');
       expect(params.ExpressionAttributeNames!['#status']).toBe('status');
 
-      // Document collision: only one `:status_0` survives in the values
-      // map, with the SET value winning. After the bug is fixed this
-      // should be 2.
-      const valueKeys = Object.keys(params.ExpressionAttributeValues!).filter((k) =>
-        k.startsWith(':status_')
-      );
-      expect(valueKeys.length).toBeGreaterThanOrEqual(1);
+      // Both values survive, each under its own placeholder — the SET writes
+      // the NEW value and the condition guards on the OLD one.
+      expect(params.ExpressionAttributeValues).toEqual({
+        ':status_0': 'pending',
+        ':status_1': 'active',
+      });
+    });
+
+    test('placeholders stay distinct when .set() precedes .where() (order-independent)', () => {
+      const params = createUpdateBuilder<TestModel>(
+        tableName,
+        { pk: 'USER#1', sk: 'USER#1' } as Partial<TestModel>,
+        client
+      )
+        .set('status', 'active')
+        .where((attr, op) => op.eq(attr.status, 'pending'))
+        .dbParams();
+
+      // .set() takes :status_0, then .where() is seeded past it → :status_1.
+      expect(params.UpdateExpression).toBe('SET #status = :status_0');
+      expect(params.ConditionExpression).toBe('#status = :status_1');
+      expect(params.ExpressionAttributeValues).toEqual({
+        ':status_0': 'active',
+        ':status_1': 'pending',
+      });
+    });
+
+    test('multi-value condition operators reserve every slot they consume', () => {
+      // BETWEEN consumes two placeholder slots; the following .set() must land
+      // past both so nothing overlaps the condition values.
+      const params = createUpdateBuilder<TestModel>(
+        tableName,
+        { pk: 'USER#1', sk: 'USER#1' } as Partial<TestModel>,
+        client
+      )
+        .where((attr, op) => op.between(attr.age, 18, 65))
+        .set('age', 40)
+        .dbParams();
+
+      expect(params.ConditionExpression).toBe('#age BETWEEN :age_low_0 AND :age_high_1');
+      expect(params.UpdateExpression).toBe('SET #age = :age_2');
+      expect(params.ExpressionAttributeValues).toEqual({
+        ':age_low_0': 18,
+        ':age_high_1': 65,
+        ':age_2': 40,
+      });
     });
 
     describe('Primary-key template guard', () => {
