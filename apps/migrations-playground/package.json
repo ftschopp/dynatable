@@ -20,17 +20,17 @@
     "migrate:create": "dynatable-migrate create"
   },
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.965.0",
-    "@aws-sdk/lib-dynamodb": "^3.965.0",
+    "@aws-sdk/client-dynamodb": "^3.1092.0",
+    "@aws-sdk/lib-dynamodb": "^3.1092.0",
     "@ftschopp/dynatable-core": "*",
     "@ftschopp/dynatable-migrations": "*",
-    "@inquirer/prompts": "^7.5.0",
+    "@inquirer/prompts": "^8.5.2",
     "chalk": "^5.4.1",
     "cli-table3": "^0.6.5"
   },
   "devDependencies": {
-    "@types/node": "^22.15.21",
-    "tsx": "^4.19.0",
+    "@types/node": "^26.1.1",
+    "tsx": "^4.23.1",
     "typescript": "5.9.3"
   }
 }
